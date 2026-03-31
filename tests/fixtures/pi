@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import sys
+
+
+def last_argument(arguments):
+    if not arguments:
+        return ""
+    return arguments[-1]
+
+
+prompt = last_argument(sys.argv[1:])
+final_text = os.environ.get("CINDER_TEST_JSON_TEXT", "json result")
+
+print(json.dumps({"type": "session", "version": 3}))
+print(json.dumps({"type": "agent_start"}))
+print(
+    json.dumps(
+        {
+            "type": "turn_end",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": final_text}],
+            },
+        }
+    )
+)
+
+if os.environ.get("CINDER_TEST_ECHO_PROMPT"):
+    print(prompt, file=sys.stderr)
+
+sys.exit(int(os.environ.get("CINDER_TEST_EXIT_CODE", "0")))

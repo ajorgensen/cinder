@@ -1,0 +1,176 @@
+*cinder.txt*  Tiny Neovim glue for running a coding harness
+
+INTRODUCTION                                                    *cinder-intro*
+
+cinder.nvim is a small Neovim plugin that collects local editing context,
+builds a prompt, launches a configured coding harness, and shows readable
+results in a scratch buffer.
+
+Minimum supported Neovim version: 0.11.
+
+COMMANDS                                                        *cinder-cmds*
+
+:CinderPrompt
+    Prompt for a short task using the current file context.
+
+:CinderPromptLong
+    Open a scratch buffer for a longer instruction.
+
+:CinderContinue
+    Send the result buffer draft back into the active session.
+
+:CinderSessionReset
+    Reset the current session association.
+
+:CinderModel [model]
+    Show the active model, or set it directly.
+
+:CinderModelSelect
+    Pick the active model from the configured list.
+
+Inside the long prompt buffer:
+
+:CinderPromptSubmit
+    Submit the current long-form prompt.
+
+:CinderPromptCancel
+    Cancel the current long-form prompt.
+
+CONFIGURATION                                                    *cinder-config*
+
+Call >
+    lua require("cinder").setup({...})
+< during startup.
+
+Default configuration: >
+    {
+      harness_command = "pi",
+      harness_args = { "-p", "--mode", "json", "--no-session" },
+      model = "openai-codex/gpt-5.3-codex-spark",
+      models = {
+        "openai-codex/gpt-5.3-codex-spark",
+      },
+      session_mode = "buffer",
+      execution_mode = "auto",
+      tmux = {
+        orientation = "vertical",
+        size = 40,
+        poll_interval = 200,
+      },
+      result_buffer = {
+        name = "Cinder Results",
+        open = true,
+        enter = false,
+        height = 12,
+      },
+      long_prompt_buffer = {
+        name = "Cinder Prompt",
+        height = 12,
+      },
+      selection_behavior = "auto",
+      notifications = "normal",
+    }
+<
+
+Options:
+
+harness_command
+    Executable to launch. Defaults to "pi".
+
+harness_args
+    Extra arguments passed before the composed prompt. The default pi setup uses
+    -p, --mode json, and --no-session so the command prints a final result,
+    exits, and gives cinder.nvim structured output to parse.
+
+model
+    Model name passed as --model when harness_command is "pi". Defaults to
+    openai-codex/gpt-5.3-codex-spark.
+
+models
+    List of models offered by :CinderModelSelect and used for completion.
+
+session_mode
+    "off" for stateless runs, or "buffer" to keep a pi session attached to the
+    result buffer draft.
+
+execution_mode
+    One of "auto", "tmux", or "job".
+
+tmux.orientation
+    "vertical" for a side-by-side split, or "horizontal" for a stacked split.
+
+tmux.size
+    Size passed to tmux split-window.
+
+tmux.poll_interval
+    Poll interval in milliseconds for detecting tmux command completion.
+
+result_buffer.name
+    Stable name used for the scratch result buffer.
+
+result_buffer.open
+    When true, open the result buffer automatically in its own split.
+
+result_buffer.enter
+    When true, move focus into the result split after opening it.
+
+result_buffer.height
+    Height used for the result split.
+
+long_prompt_buffer.name
+    Stable name used for the scratch long prompt buffer.
+
+long_prompt_buffer.height
+    Height used for the long prompt split.
+
+selection_behavior
+    One of "auto", "agent", or "replace".
+
+notifications
+    "normal" or "silent". Errors still surface when silent mode is used.
+
+BEHAVIOR                                                        *cinder-behavior*
+
+- Sends the current file path and either the cursor line or the visual
+  selection.
+- When the current buffer is not file-backed, sends only the task text.
+- Does not inline the entire file by default.
+- Prefers tmux splits when Neovim is running inside tmux and execution_mode is
+  "auto".
+- Falls back to a background job when tmux is unavailable.
+- Refreshes changed buffers after the harness exits.
+
+LONG PROMPT BUFFER                                               *cinder-long*
+
+The long prompt buffer includes lightweight instructions. Submit with CTRL-S or
+with :CinderPromptSubmit. Cancel with q or :CinderPromptCancel. It opens in its
+own split so your source buffer stays visible.
+
+SELECTION BEHAVIOR                                         *cinder-selection*
+
+When selection_behavior is "auto", an empty prompt with a non-block visual
+selection uses replace-selection mode. In that mode, cinder.nvim asks the model
+for replacement text only and applies the result directly to the selected range.
+
+Use "agent" to keep the regular full-agent editing flow for all selections, or
+"replace" to always treat selections as replacement targets.
+
+RESULT BUFFER                                                   *cinder-result*
+
+The result buffer is the canonical output view. Background job output streams
+into it directly. With the default pi JSON mode, cinder.nvim extracts the final
+assistant text and writes that cleaned result instead of raw event JSON. Tmux
+runs import their final output back into it when the process completes. When the
+buffer auto-opens, it uses a dedicated split instead of replacing the active
+editing window.
+
+TROUBLESHOOTING                                           *cinder-troubleshoot*
+
+- If the harness does not start, verify that |executable()| can find the value
+  of harness_command.
+- If tmux mode fails, ensure Neovim is running inside tmux and that the tmux
+  executable is available.
+- If files are not refreshing, make sure the edited buffers do not have unsaved
+  local changes.
+
+vim:tw=78:ts=8:ft=help:norl:

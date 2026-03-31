@@ -1,0 +1,3 @@
+- [ ] Allow open code as a provider
+- [ ] Add split strategy, tmux split is nice but it is disruptive
+- [ ] Allow for resuming a session, the buffer that is created with the result should have a session id so you can respond and continue the session
