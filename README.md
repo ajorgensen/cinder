@@ -37,7 +37,7 @@ We are not sending the entire file by default.
 Reasoning:
 
 - large files can blow up context size
-- `pi` is an agent and can read files from the repo when needed
+- `opencode` is an agent and can read files from the repo when needed
 - file path plus range plus selected text gives the agent a precise starting point without overstuffing the prompt
 
 ### Prompt entry
@@ -80,7 +80,7 @@ Reasoning:
 ### Session model
 
 - prefer stateless editor-triggered runs for MVP
-- start with `--no-session` by default unless we later decide persistent sessions are useful
+- start with plain text output by default unless a structured format is specifically needed
 
 ## Initial UX
 
@@ -120,7 +120,7 @@ Example uses:
 
 ## Prompt Composition
 
-The plugin should build a structured prompt that gives `pi` enough context to begin work.
+The plugin should build a structured prompt that gives `opencode` enough context to begin work.
 
 Example shape:
 
@@ -142,7 +142,7 @@ Notes:
 
 - if there is no selection, omit selected range and selected text
 - the file path should be repo-relative when possible
-- the prompt should make it clear that `pi` may inspect other files if needed
+- the prompt should make it clear that `opencode` may inspect other files if needed
 
 ## Harness Integration Plan
 
@@ -151,21 +151,17 @@ Start simple.
 - tmux path: launch the harness in a split so the user can watch the run
 - non-tmux path: launch the harness as a background job and capture stdout/stderr into the scratch result buffer
 - prefer passing prompt content as arguments rather than relying on stdin for the main flow
-- use `--no-session` by default for editor-triggered runs
+- use `opencode run` by default for editor-triggered runs
 
 The important rule is that the final readable output should still end up in Neovim, even if tmux is used for live execution.
 
 Possible initial command shape:
 
 ```sh
-pi --no-session "<composed prompt>"
+opencode run "<composed prompt>"
 ```
 
-For the first provider, we expect to use `pi`. If we need better streaming, cancellation, or follow-up control later, we can move to:
-
-- `pi -p --no-session`
-- `pi --mode json --no-session`
-- `pi --mode rpc --no-session`
+If we need structured integration later, we can opt into `opencode --format json` for those specific flows.
 
 We should not start with RPC unless the simpler path proves too limiting.
 
@@ -232,11 +228,11 @@ Default configuration:
 
 ```lua
 require("cinder").setup({
-  harness_command = "pi",
-  harness_args = { "-p", "--mode", "json", "--no-session" },
-  model = "openai-codex/gpt-5.3-codex-spark",
+  harness_command = "opencode",
+  harness_args = { "run" },
+  model = "openai/gpt-5.4",
   models = {
-    "openai-codex/gpt-5.3-codex-spark",
+    "openai/gpt-5.4",
   },
   session_mode = "buffer",
   execution_mode = "auto",
@@ -283,8 +279,8 @@ Both commands work from normal mode and visual mode.
 - If Neovim is inside tmux and `execution_mode` is `auto`, the harness runs in a tmux split.
 - Otherwise the harness runs as a background Neovim job and streams output into the result buffer.
 - After the harness exits, `cinder.nvim` refreshes changed file-backed buffers with `:checktime` and appends a short completion summary.
-- The default `pi` invocation is non-interactive and structured: `pi -p --mode json --no-session`.
-- The default model is `openai-codex/gpt-5.3-codex-spark` and is passed as `--model` when using `pi`.
+- The default invocation is `opencode run`.
+- The default model is `openai/gpt-5.4` and is passed as `--model` when the harness supports it.
 
 ## Models
 
@@ -294,7 +290,7 @@ Both commands work from normal mode and visual mode.
 
 ## Sessions
 
-- `session_mode = "buffer"` keeps a `pi` session attached to the result buffer.
+- `session_mode = "buffer"` keeps an `opencode` session attached to the result buffer.
 - The result buffer includes a `## Draft` section you can edit for follow-up messages.
 - Use `:CinderContinue` or `<C-s>` in the result buffer to send that draft back into the same session.
 - Use `:CinderSessionReset` to drop the current session and start fresh on the next run.
@@ -303,7 +299,7 @@ Both commands work from normal mode and visual mode.
 
 - The result buffer is the canonical place for readable output.
 - When auto-open is enabled, the result buffer opens in its own split instead of replacing your current editing buffer.
-- With the default `pi --mode json` setup, the result buffer shows the parsed final assistant text instead of raw JSON event output.
+- With the default `opencode run` setup, the result buffer shows captured plain-text output instead of raw event JSON.
 - Background stderr is prefixed with `[stderr]`.
 - Tmux runs still import final output back into the result buffer after completion.
 

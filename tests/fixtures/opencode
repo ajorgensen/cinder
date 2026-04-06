@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+
+
+def last_argument(arguments):
+    if not arguments:
+        return ""
+    return arguments[-1]
+
+
+arguments = sys.argv[1:]
+prompt = last_argument(arguments)
+continuing = "--continue" in arguments or "--session" in arguments
+
+if continuing:
+    text = os.environ.get("CINDER_TEST_CONTINUE_STDOUT", os.environ.get("CINDER_TEST_STDOUT", "continued result"))
+else:
+    text = os.environ.get("CINDER_TEST_STDOUT", "opencode result")
+
+print(text)
+
+stderr_text = os.environ.get("CINDER_TEST_STDERR")
+if stderr_text:
+    print(stderr_text, file=sys.stderr)
+
+if os.environ.get("CINDER_TEST_ECHO_PROMPT"):
+    print(prompt, file=sys.stderr)
+
+edit_file = os.environ.get("CINDER_TEST_EDIT_FILE")
+if edit_file:
+    with open(edit_file, "w", encoding="utf-8") as handle:
+        handle.write(os.environ.get("CINDER_TEST_EDIT_CONTENT", ""))
+
+sys.exit(int(os.environ.get("CINDER_TEST_EXIT_CODE", "0")))

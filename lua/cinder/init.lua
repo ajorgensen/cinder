@@ -50,6 +50,10 @@ local function is_pi_command(command)
   return vim.fs.basename(command or "") == "pi"
 end
 
+local function is_opencode_command(command)
+  return vim.fs.basename(command or "") == "opencode"
+end
+
 local function selection_mode(active, ctx, task)
   if not has_selection_context(ctx) then
     return "agent"
@@ -90,7 +94,7 @@ local function replacement_output(meta)
 end
 
 local function session_enabled(active)
-  return active.session_mode == "buffer" and is_pi_command(active.harness_command)
+  return active.session_mode == "buffer" and (is_pi_command(active.harness_command) or is_opencode_command(active.harness_command))
 end
 
 local function new_session_file()
@@ -117,8 +121,15 @@ local function run_task(task, invocation)
   local active = config.ensure()
   local ctx = invocation.context or context.collect(invocation)
   local session_file = invocation.session_file
+  local runner_session_file = session_file
   if not session_file and session_enabled(active) then
-    session_file = new_session_file()
+    if is_pi_command(active.harness_command) then
+      session_file = new_session_file()
+      runner_session_file = session_file
+    elseif is_opencode_command(active.harness_command) then
+      session_file = runner.opencode_continue_session()
+      runner_session_file = nil
+    end
   end
 
   ui.set_result_session(session_file, ctx and ctx.bufnr or nil)
@@ -137,7 +148,7 @@ local function run_task(task, invocation)
   return runner.run({
     config = active,
     prompt = composed_prompt,
-    session_file = session_file,
+    session_file = runner_session_file,
     on_stdout = function(data)
       ui.append_output(result_bufnr, data)
     end,
@@ -149,6 +160,8 @@ local function run_task(task, invocation)
       refresh_buffers()
       if meta.final_output and meta.final_output ~= "" then
         ui.append_transcript(result_bufnr, "Assistant", meta.final_output)
+      elseif meta.backend == "tmux" and meta.stdout and meta.stdout ~= "" then
+        ui.append_output(result_bufnr, meta.stdout)
       elseif meta.output_mode == "json" and meta.stdout and meta.stdout ~= "" then
         ui.append_output(result_bufnr, meta.stdout)
       end

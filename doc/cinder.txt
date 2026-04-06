@@ -44,11 +44,11 @@ Call >
 
 Default configuration: >
     {
-      harness_command = "pi",
-      harness_args = { "-p", "--mode", "json", "--no-session" },
-      model = "openai-codex/gpt-5.3-codex-spark",
+      harness_command = "opencode",
+      harness_args = { "run" },
+      model = "openai/gpt-5.4",
       models = {
-        "openai-codex/gpt-5.3-codex-spark",
+        "openai/gpt-5.4",
       },
       session_mode = "buffer",
       execution_mode = "auto",
@@ -75,22 +75,22 @@ Default configuration: >
 Options:
 
 harness_command
-    Executable to launch. Defaults to "pi".
+    Executable to launch. Defaults to "opencode".
 
 harness_args
-    Extra arguments passed before the composed prompt. The default pi setup uses
-    -p, --mode json, and --no-session so the command prints a final result,
-    exits, and gives cinder.nvim structured output to parse.
+    Extra arguments passed before the composed prompt. The default setup uses
+    opencode's `run` subcommand so cinder.nvim can stream readable text output
+    directly into the result buffer.
 
 model
-    Model name passed as --model when harness_command is "pi". Defaults to
-    openai-codex/gpt-5.3-codex-spark.
+    Model name passed as --model when the harness supports it. Defaults to
+    openai/gpt-5.4.
 
 models
     List of models offered by :CinderModelSelect and used for completion.
 
 session_mode
-    "off" for stateless runs, or "buffer" to keep a pi session attached to the
+    "off" for stateless runs, or "buffer" to keep a harness session attached to the
     result buffer draft.
 
 execution_mode
@@ -158,9 +158,10 @@ Use "agent" to keep the regular full-agent editing flow for all selections, or
 RESULT BUFFER                                                   *cinder-result*
 
 The result buffer is the canonical output view. Background job output streams
-into it directly. With the default pi JSON mode, cinder.nvim extracts the final
-assistant text and writes that cleaned result instead of raw event JSON. Tmux
-runs import their final output back into it when the process completes. When the
+into it directly. With the default `opencode run` setup, cinder.nvim shows the
+captured plain-text output instead of raw event JSON. If you explicitly use a
+JSON output mode, cinder.nvim still extracts the final assistant text. Tmux runs
+import their final output back into it when the process completes. When the
 buffer auto-opens, it uses a dedicated split instead of replacing the active
 editing window.
 

@@ -1,10 +1,10 @@
 local M = {}
 
 local defaults = {
-  harness_command = "pi",
-  harness_args = { "-p", "--mode", "json", "--no-session" },
-  model = "openai-codex/gpt-5.3-codex-spark",
-  models = { "openai-codex/gpt-5.3-codex-spark" },
+  harness_command = "opencode",
+  harness_args = { "run" },
+  model = "openai/gpt-5.4",
+  models = { "openai/gpt-5.4" },
   session_mode = "buffer",
   execution_mode = "auto",
   tmux = {

@@ -8,8 +8,8 @@ local function fake_json_harness()
   return h.repo_root() .. "/tests/fixtures/fake-json-harness.py"
 end
 
-local function fake_pi()
-  return h.repo_root() .. "/tests/fixtures/pi"
+local function fake_opencode()
+  return h.repo_root() .. "/tests/fixtures/opencode"
 end
 
 local function configure(opts)
@@ -87,13 +87,13 @@ return {
     name = "result buffer draft can continue a session",
     run = function()
       local cinder = configure({
-        harness_command = fake_pi(),
-        harness_args = { "--mode", "json" },
+        harness_command = fake_opencode(),
+        harness_args = { "run" },
         session_mode = "buffer",
       })
       local path = h.make_temp_file({ "local value = 1" })
       h.open_file(path)
-      vim.env.CINDER_TEST_JSON_TEXT = "First answer"
+      vim.env.CINDER_TEST_STDOUT = "First answer"
 
       vim.ui.input = function(_, callback)
         callback("Explain this file.")
@@ -109,7 +109,7 @@ return {
       h.expect(session ~= nil and session.session_file ~= nil, "expected a result session file")
 
       require("cinder.ui").set_result_draft("Continue the explanation.")
-      vim.env.CINDER_TEST_JSON_TEXT = "Second answer"
+      vim.env.CINDER_TEST_CONTINUE_STDOUT = "Second answer"
       vim.cmd("CinderContinue")
 
       h.wait(function()
@@ -120,7 +120,6 @@ return {
       h.contains(text, "## User")
       h.contains(text, "Explain this file.")
       h.contains(text, "Continue the explanation.")
-      h.contains(text, "## Assistant")
       h.contains(text, "First answer")
       h.contains(text, "Second answer")
       h.eq(require("cinder.ui").get_result_draft_text(), "")
@@ -183,12 +182,12 @@ return {
     name = "long prompt can submit and cancel",
     run = function()
       local cinder = configure({
-        harness_command = fake_json_harness(),
-        harness_args = { "--mode", "json" },
+        harness_command = fake_harness(),
+        harness_args = {},
       })
       local path = h.make_temp_file({ "local value = 1" })
       h.open_file(path)
-      vim.env.CINDER_TEST_JSON_TEXT = "Explain the code."
+      vim.env.CINDER_TEST_STDOUT = "Explain the code."
 
       cinder.command_prompt_long({ buf = vim.api.nvim_get_current_buf(), range = 0 })
       local ui = require("cinder.ui")
@@ -247,12 +246,12 @@ return {
     name = "empty quick prompt still runs with selection context",
     run = function()
       local cinder = configure({
-        harness_command = fake_json_harness(),
-        harness_args = { "--mode", "json" },
+        harness_command = fake_harness(),
+        harness_args = {},
       })
       local path = h.make_temp_file({ "// Write a fibonacci helper" })
       h.open_file(path)
-      vim.env.CINDER_TEST_JSON_TEXT = "def first_10_fibonacci():\n    return [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]"
+      vim.env.CINDER_TEST_STDOUT = "def first_10_fibonacci():\n    return [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]"
       vim.fn.setpos("'<", { 0, 1, 1, 0 })
       vim.fn.setpos("'>", { 0, 1, 27, 0 })
 
@@ -349,12 +348,12 @@ return {
     name = "empty long prompt still runs with selection context",
     run = function()
       local cinder = configure({
-        harness_command = fake_json_harness(),
-        harness_args = { "--mode", "json" },
+        harness_command = fake_harness(),
+        harness_args = {},
       })
       local path = h.make_temp_file({ "# implement a helper" })
       h.open_file(path)
-      vim.env.CINDER_TEST_JSON_TEXT = "def helper():\n    return 42"
+      vim.env.CINDER_TEST_STDOUT = "def helper():\n    return 42"
       vim.fn.setpos("'<", { 0, 1, 1, 0 })
       vim.fn.setpos("'>", { 0, 1, 20, 0 })
 

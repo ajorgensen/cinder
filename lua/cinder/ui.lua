@@ -294,11 +294,7 @@ function M.append_output(bufnr, text, opts)
     lines[index] = prefix .. line
   end
 
-  vim.schedule(function()
-    if is_valid_buffer(bufnr) then
-      insert_before_draft(bufnr, lines)
-    end
-  end)
+  insert_before_draft(bufnr, lines)
 end
 
 function M.append_summary(bufnr, summary)
@@ -306,11 +302,7 @@ function M.append_summary(bufnr, summary)
     return
   end
 
-  vim.schedule(function()
-    if is_valid_buffer(bufnr) then
-      insert_before_draft(bufnr, { "", summary })
-    end
-  end)
+  insert_before_draft(bufnr, { "", summary })
 end
 
 function M.set_status(bufnr, status)

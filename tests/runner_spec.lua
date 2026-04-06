@@ -6,34 +6,29 @@ return {
     run = function()
       h.reset()
       local argv = require("cinder.runner").build_argv({
-        harness_command = "pi",
-        harness_args = { "-p", "--mode", "json", "--no-session" },
-        model = "openai-codex/gpt-5.3-codex-spark",
+        harness_command = "opencode",
+        harness_args = { "run" },
+        model = "openai/gpt-5.4",
       }, "task")
 
-      h.eq(argv[1], "pi")
-      h.eq(argv[2], "-p")
-      h.eq(argv[3], "--mode")
-      h.eq(argv[4], "json")
-      h.eq(argv[5], "--no-session")
-      h.eq(argv[6], "--model")
-      h.eq(argv[7], "openai-codex/gpt-5.3-codex-spark")
-      h.eq(argv[8], "task")
+      h.eq(argv[1], "opencode")
+      h.eq(argv[2], "run")
+      h.eq(argv[3], "--model")
+      h.eq(argv[4], "openai/gpt-5.4")
+      h.eq(argv[5], "task")
     end,
   },
   {
-    name = "runner uses session file instead of no-session",
+    name = "runner uses opencode continue for buffer sessions",
     run = function()
       h.reset()
       local argv = require("cinder.runner").build_argv({
-        harness_command = "pi",
-        harness_args = { "-p", "--mode", "json", "--no-session" },
-        model = "openai-codex/gpt-5.3-codex-spark",
-      }, "task", { session_file = "/tmp/cinder-session.jsonl" })
+        harness_command = "opencode",
+        harness_args = { "run" },
+        model = "openai/gpt-5.4",
+      }, "task", { session_file = require("cinder.runner").opencode_continue_session() })
 
-      h.expect(vim.tbl_contains(argv, "--session"), "expected session flag")
-      h.expect(not vim.tbl_contains(argv, "--no-session"), "expected no-session to be removed")
-      h.eq(argv[#argv - 1], "/tmp/cinder-session.jsonl")
+      h.expect(vim.tbl_contains(argv, "--continue"), "expected continue flag")
       h.eq(argv[#argv], "task")
     end,
   },
@@ -42,14 +37,14 @@ return {
     run = function()
       h.reset()
       local argv = require("cinder.runner").build_argv({
-        harness_command = "pi",
-        harness_args = { "-p", "--model", "custom/model" },
-        model = "openai-codex/gpt-5.3-codex-spark",
+        harness_command = "opencode",
+        harness_args = { "run", "-m", "custom/model" },
+        model = "openai/gpt-5.4",
       }, "task")
 
-      h.eq(argv[1], "pi")
-      h.eq(argv[2], "-p")
-      h.eq(argv[3], "--model")
+      h.eq(argv[1], "opencode")
+      h.eq(argv[2], "run")
+      h.eq(argv[3], "-m")
       h.eq(argv[4], "custom/model")
       h.eq(argv[5], "task")
     end,
@@ -70,14 +65,14 @@ return {
     run = function()
       h.reset()
       local lines = require("cinder.runner")._build_tmux_script_lines(
-        { "pi", "-p", "--mode", "json", "--no-session", "--model", "openai-codex/gpt-5.3-codex-spark", "task text" },
+        { "opencode", "run", "--model", "openai/gpt-5.4", "task text" },
         "/tmp/stdout",
         "/tmp/stderr",
         "/tmp/exit"
       )
 
       local script = table.concat(lines, "\n")
-      h.contains(script, "'pi' '-p' '--mode' 'json' '--no-session' '--model' 'openai-codex/gpt-5.3-codex-spark' 'task text'")
+      h.contains(script, "'opencode' 'run' '--model' 'openai/gpt-5.4' 'task text'")
       h.contains(script, "/tmp/stdout")
       h.contains(script, "/tmp/stderr")
       h.contains(script, "/tmp/exit")

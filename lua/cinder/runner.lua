@@ -1,5 +1,15 @@
 local M = {}
 
+local OPENCODE_CONTINUE_SESSION = "opencode:last"
+
+local function is_pi_command(command)
+  return vim.fs.basename(command or "") == "pi"
+end
+
+local function is_opencode_command(command)
+  return vim.fs.basename(command or "") == "opencode"
+end
+
 local function extract_text_parts(message)
   if type(message) ~= "table" or type(message.content) ~= "table" then
     return nil
@@ -47,7 +57,7 @@ end
 
 local function output_mode(argv)
   for index = 1, #argv do
-    if argv[index] == "--mode" then
+    if argv[index] == "--mode" or argv[index] == "--format" then
       return argv[index + 1] or "text"
     end
   end
@@ -126,10 +136,10 @@ local function build_argv(config, prompt, opts)
       argv[#argv + 1] = arg
     end
   end
-  if vim.fs.basename(config.harness_command) == "pi" then
+  if is_pi_command(config.harness_command) or is_opencode_command(config.harness_command) then
     local has_model = false
     for index = 1, #argv do
-      if argv[index] == "--model" then
+      if argv[index] == "--model" or argv[index] == "-m" then
         has_model = true
         break
       end
@@ -139,7 +149,15 @@ local function build_argv(config, prompt, opts)
     end
   end
   if opts.session_file then
-    vim.list_extend(argv, { "--session", opts.session_file })
+    if is_opencode_command(config.harness_command) then
+      if opts.session_file == OPENCODE_CONTINUE_SESSION then
+        argv[#argv + 1] = "--continue"
+      else
+        vim.list_extend(argv, { "--session", opts.session_file })
+      end
+    else
+      vim.list_extend(argv, { "--session", opts.session_file })
+    end
   elseif opts.force_no_session then
     local has_session_flag = false
     for _, arg in ipairs(argv) do
@@ -148,7 +166,7 @@ local function build_argv(config, prompt, opts)
         break
       end
     end
-    if not has_session_flag then
+    if not has_session_flag and is_pi_command(config.harness_command) then
       argv[#argv + 1] = "--no-session"
     end
   end
@@ -321,6 +339,10 @@ end
 
 function M._build_tmux_script_lines(argv, stdout_file, stderr_file, exit_file)
   return build_tmux_script_lines(argv, stdout_file, stderr_file, exit_file)
+end
+
+function M.opencode_continue_session()
+  return OPENCODE_CONTINUE_SESSION
 end
 
 return M

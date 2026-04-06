@@ -9,15 +9,12 @@ return {
         execution_mode = "job",
       })
 
-      h.eq(cfg.harness_command, "pi")
-      h.eq(cfg.model, "openai-codex/gpt-5.3-codex-spark")
-      h.eq(cfg.models[1], "openai-codex/gpt-5.3-codex-spark")
+      h.eq(cfg.harness_command, "opencode")
+      h.eq(cfg.model, "openai/gpt-5.4")
+      h.eq(cfg.models[1], "openai/gpt-5.4")
       h.eq(cfg.session_mode, "buffer")
       h.eq(cfg.execution_mode, "job")
-      h.eq(cfg.harness_args[1], "-p")
-      h.eq(cfg.harness_args[2], "--mode")
-      h.eq(cfg.harness_args[3], "json")
-      h.eq(cfg.harness_args[4], "--no-session")
+      h.eq(cfg.harness_args[1], "run")
     end,
   },
   {
