@@ -1,3 +1,0 @@
-- [ ] Allow open code as a provider
-- [x] Run the harness with Neovim background jobs instead of tmux splits
-- [ ] Allow for resuming a session, the buffer that is created with the result should have a session id so you can respond and continue the session
