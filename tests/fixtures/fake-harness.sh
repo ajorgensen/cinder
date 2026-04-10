@@ -2,6 +2,10 @@
 
 prompt="$1"
 
+if [ -n "$CINDER_TEST_SLEEP" ]; then
+	sleep "$CINDER_TEST_SLEEP"
+fi
+
 if [ -n "$CINDER_TEST_STDOUT" ]; then
 	printf '%s\n' "$CINDER_TEST_STDOUT"
 else

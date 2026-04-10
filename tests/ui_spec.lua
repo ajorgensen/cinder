@@ -74,6 +74,9 @@ return {
       h.expect(source_bufnr ~= prompt_bufnr, "expected prompt buffer to be separate from source buffer")
       h.expect(vim.fn.exists(":CinderPromptSubmit") == 2, "expected global submit command")
       h.expect(vim.fn.exists(":CinderPromptCancel") == 2, "expected global cancel command")
+      h.expect(vim.fn.exists(":CinderJobs") == 2, "expected jobs command")
+      h.expect(vim.fn.exists(":CinderLog") == 2, "expected log command")
+      h.expect(vim.fn.exists(":CinderTail") == 2, "expected tail command")
     end,
   },
 }

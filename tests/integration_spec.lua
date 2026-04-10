@@ -17,7 +17,6 @@ local function configure(opts)
   cinder.setup(vim.tbl_deep_extend("force", {
     harness_command = fake_harness(),
     harness_args = {},
-    execution_mode = "job",
     result_buffer = {
       name = "Cinder Results",
       open = false,
@@ -25,6 +24,44 @@ local function configure(opts)
     notifications = "silent",
   }, opts or {}))
   return cinder
+end
+
+local function submit_prompt(cinder, lines)
+  local ui = require("cinder.ui")
+  local prompt_bufnr = ui.state().prompt_bufnr
+  h.expect(prompt_bufnr ~= nil, "expected prompt buffer")
+  vim.api.nvim_buf_set_lines(prompt_bufnr, ui.state().prompt_header_lines, -1, false, lines)
+  cinder.submit_long_prompt()
+end
+
+local function jobs_buffer_text()
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(bufnr) and vim.fs.basename(vim.api.nvim_buf_get_name(bufnr)) == "Cinder Jobs" then
+      return table.concat(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false), "\n")
+    end
+  end
+
+  return ""
+end
+
+local function log_buffer_text()
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(bufnr) and vim.fs.basename(vim.api.nvim_buf_get_name(bufnr)) == "Cinder Log" then
+      return table.concat(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false), "\n")
+    end
+  end
+
+  return ""
+end
+
+local function tail_buffer_text()
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(bufnr) and vim.fs.basename(vim.api.nvim_buf_get_name(bufnr)) == "Cinder Tail" then
+      return table.concat(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false), "\n")
+    end
+  end
+
+  return ""
 end
 
 return {
@@ -36,11 +73,8 @@ return {
       h.open_file(path)
       vim.api.nvim_win_set_cursor(0, { 2, 0 })
 
-      vim.ui.input = function(_, callback)
-        callback("Count the lines.")
-      end
-
       cinder.command_prompt({ buf = vim.api.nvim_get_current_buf(), range = 0 })
+      submit_prompt(cinder, { "Count the lines.", "Explain your answer." })
 
       h.wait(function()
         return h.result_text():find("Run completed successfully.", 1, true) ~= nil
@@ -49,7 +83,43 @@ return {
       local text = h.result_text()
       h.contains(text, "Current file:")
       h.contains(text, "Cursor line: 2")
-      h.contains(text, "Task:\nCount the lines.")
+      h.contains(text, "Task:\nCount the lines.\nExplain your answer.")
+    end,
+  },
+  {
+    name = "debug log records run lifecycle",
+    run = function()
+      local cinder = configure()
+      local path = h.make_temp_file({ "one", "two" })
+      h.open_file(path)
+
+      cinder.command_prompt({ buf = vim.api.nvim_get_current_buf(), range = 0 })
+      submit_prompt(cinder, { "Explain this file." })
+
+      h.wait(function()
+        return h.result_text():find("Run completed successfully.", 1, true) ~= nil
+      end, 3000, "logged run did not finish")
+
+      local log_path = require("cinder.debug").path()
+      local log_text = table.concat(vim.fn.readfile(log_path), "\n")
+      h.contains(log_text, "prompt.opened")
+      h.contains(log_text, "prompt.submit")
+      h.contains(log_text, "runner.started")
+      h.contains(log_text, "run.completed")
+
+      vim.cmd("CinderLog")
+      local buffer_text = log_buffer_text()
+      h.contains(buffer_text, "prompt.opened")
+      h.contains(buffer_text, "run.completed")
+
+      local run = require("cinder.jobs").latest()
+      h.expect(run and run.stream_path, "expected stream log path")
+      local stream_text = table.concat(vim.fn.readfile(run.stream_path), "\n")
+      h.contains(stream_text, "stream.start")
+      h.contains(stream_text, "[stdout]")
+
+      vim.cmd("CinderTail")
+      h.contains(tail_buffer_text(), "[stdout]")
     end,
   },
   {
@@ -84,6 +154,36 @@ return {
     end,
   },
   {
+    name = "jobs command shows running and completed runs",
+    run = function()
+      local cinder = configure()
+      local path = h.make_temp_file({ "one", "two", "three" })
+      h.open_file(path)
+      vim.env.CINDER_TEST_STDOUT = "done"
+      vim.env.CINDER_TEST_SLEEP = "0.3"
+
+      cinder.command_prompt({ buf = vim.api.nvim_get_current_buf(), range = 0 })
+      submit_prompt(cinder, { "Count the lines." })
+
+      h.wait(function()
+        return require("cinder.jobs").summary().running == 1
+      end, 3000, "expected a running cinder job")
+
+      vim.cmd("CinderJobs")
+      h.contains(jobs_buffer_text(), "[running] run 1")
+
+      h.wait(function()
+        local summary = require("cinder.jobs").summary()
+        return summary.completed == 1 or summary.lost == 1
+      end, 3000, "expected cinder job to finish or be marked lost")
+
+      vim.cmd("CinderJobs")
+      local text = jobs_buffer_text()
+      h.expect(text:find("[completed] run 1", 1, true) ~= nil or text:find("[lost] run 1", 1, true) ~= nil, "expected completed or lost run status")
+      h.contains(text, "Job ID:")
+    end,
+  },
+  {
     name = "result buffer draft can continue a session",
     run = function()
       local cinder = configure({
@@ -95,11 +195,8 @@ return {
       h.open_file(path)
       vim.env.CINDER_TEST_STDOUT = "First answer"
 
-      vim.ui.input = function(_, callback)
-        callback("Explain this file.")
-      end
-
       cinder.command_prompt({ buf = vim.api.nvim_get_current_buf(), range = 0 })
+      submit_prompt(cinder, { "Explain this file." })
 
       h.wait(function()
         return h.result_text():find("First answer", 1, true) ~= nil
@@ -126,26 +223,19 @@ return {
     end,
   },
   {
-    name = "quick prompt keeps file context when input switches buffers",
+    name = "quick prompt keeps file context in prompt buffer flow",
     run = function()
       local cinder = configure()
       local path = h.make_temp_file({ "one", "two", "three" })
       h.open_file(path)
       vim.api.nvim_win_set_cursor(0, { 2, 0 })
 
-      vim.ui.input = function(_, callback)
-        local prompt_bufnr = vim.api.nvim_create_buf(false, true)
-        vim.schedule(function()
-          vim.api.nvim_set_current_buf(prompt_bufnr)
-          callback("Count the lines.")
-        end)
-      end
-
       cinder.command_prompt({ range = 0 })
+      submit_prompt(cinder, { "Count the lines." })
 
       h.wait(function()
         return h.result_text():find("Run completed successfully.", 1, true) ~= nil
-      end, 3000, "quick prompt with async input did not finish")
+      end, 3000, "quick prompt with prompt buffer did not finish")
 
       local text = h.result_text()
       h.contains(text, path)
@@ -161,11 +251,8 @@ return {
       vim.fn.setpos("'<", { 0, 1, 1, 0 })
       vim.fn.setpos("'>", { 0, 2, 4, 0 })
 
-      vim.ui.input = function(_, callback)
-        callback("Rewrite this.")
-      end
-
       cinder.command_prompt({ buf = vim.api.nvim_get_current_buf(), range = 1 })
+      submit_prompt(cinder, { "Rewrite this." })
 
       h.wait(function()
         return h.result_text():find("Run completed successfully.", 1, true) ~= nil
@@ -216,11 +303,8 @@ return {
       vim.env.CINDER_TEST_EDIT_FILE = path
       vim.env.CINDER_TEST_EDIT_CONTENT = "after\n"
 
-      vim.ui.input = function(_, callback)
-        callback("Update the file.")
-      end
-
       cinder.command_prompt({ buf = vim.api.nvim_get_current_buf(), range = 0 })
+      submit_prompt(cinder, { "Update the file." })
 
       h.wait(function()
         return vim.api.nvim_buf_get_lines(0, 0, -1, false)[1] == "after"
@@ -234,11 +318,8 @@ return {
       local path = h.make_temp_file({ "noop" })
       h.open_file(path)
 
-      vim.ui.input = function(_, callback)
-        callback("")
-      end
-
       cinder.command_prompt({ buf = vim.api.nvim_get_current_buf(), range = 0 })
+      cinder.submit_long_prompt()
       h.eq(h.result_text(), "")
     end,
   },
@@ -255,11 +336,8 @@ return {
       vim.fn.setpos("'<", { 0, 1, 1, 0 })
       vim.fn.setpos("'>", { 0, 1, 27, 0 })
 
-      vim.ui.input = function(_, callback)
-        callback("")
-      end
-
       cinder.command_prompt({ buf = vim.api.nvim_get_current_buf(), range = 1 })
+      cinder.submit_long_prompt()
 
       h.wait(function()
         return h.result_text():find("Applied replacement to the selected text.", 1, true) ~= nil
@@ -277,11 +355,8 @@ return {
       local cinder = configure()
       vim.cmd.enew()
 
-      vim.ui.input = function(_, callback)
-        callback("Just answer the question.")
-      end
-
       cinder.command_prompt({ range = 0 })
+      submit_prompt(cinder, { "Just answer the question." })
 
       h.wait(function()
         return h.result_text():find("Run completed successfully.", 1, true) ~= nil
@@ -303,11 +378,8 @@ return {
       h.open_file(path)
       vim.env.CINDER_TEST_JSON_TEXT = "Clean final answer"
 
-      vim.ui.input = function(_, callback)
-        callback("Summarize this.")
-      end
-
       cinder.command_prompt({ range = 0 })
+      submit_prompt(cinder, { "Summarize this." })
 
       h.wait(function()
         return h.result_text():find("Run completed successfully.", 1, true) ~= nil

@@ -49,33 +49,4 @@ return {
       h.eq(argv[5], "task")
     end,
   },
-  {
-    name = "runner chooses job backend outside tmux",
-    run = function()
-      h.reset()
-      local saved_tmux = vim.env.TMUX
-      vim.env.TMUX = nil
-      local backend = require("cinder.runner").choose_backend({ execution_mode = "auto" })
-      vim.env.TMUX = saved_tmux
-      h.eq(backend, "job")
-    end,
-  },
-  {
-    name = "tmux script includes harness args",
-    run = function()
-      h.reset()
-      local lines = require("cinder.runner")._build_tmux_script_lines(
-        { "opencode", "run", "--model", "openai/gpt-5.4", "task text" },
-        "/tmp/stdout",
-        "/tmp/stderr",
-        "/tmp/exit"
-      )
-
-      local script = table.concat(lines, "\n")
-      h.contains(script, "'opencode' 'run' '--model' 'openai/gpt-5.4' 'task text'")
-      h.contains(script, "/tmp/stdout")
-      h.contains(script, "/tmp/stderr")
-      h.contains(script, "/tmp/exit")
-    end,
-  },
 }

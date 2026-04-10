@@ -8,7 +8,7 @@ The goal is to keep the first version extremely small: capture context from the 
 
 An MVP Neovim plugin with two entry points:
 
-- a quick prompt command for short instructions
+- a prompt command for short or multiline instructions
 - a long prompt command that opens a temporary buffer for writing a larger task
 
 The plugin will gather editor context and launch the configured harness with that context.
@@ -44,27 +44,24 @@ Reasoning:
 
 We want two ways to start a task:
 
-- quick prompt: a simple input prompt for most requests
+- quick prompt: a scratch prompt buffer for most requests, including multiline tasks
 - long prompt: a scratch-style buffer for writing a longer instruction
 
 ### Execution model
 
-- if Neovim is running inside tmux, prefer launching the harness in a tmux split
-- if Neovim is not in tmux, fall back to a background Neovim job
-- the fallback job should stream output into a scratch result buffer
-- this behavior should be configurable
+- launch the harness as a background Neovim job
+- stream output into a scratch result buffer
 
 Reasoning:
 
-- tmux gives visible feedback for long-running agent work
-- the non-tmux path still needs to feel transparent, not silent
+- the editor integration should behave the same regardless of whether Neovim is inside tmux
+- background jobs keep the flow visible without stealing screen space
 
 ### Output model
 
 - the result buffer is the canonical place for readable harness output
 - question-style tasks should write their answer into the result buffer
 - edit-style tasks should still write a summary into the result buffer
-- tmux is an optional live execution view, not the only place output exists
 
 Reasoning:
 
@@ -97,7 +94,7 @@ The first usable version should feel like this:
 
 Exact names can change, but the first shape should be:
 
-- `:CinderPrompt` - prompt for a short instruction using current file or selection context
+- `:CinderPrompt` - open a prompt buffer using current file or selection context
 - `:CinderPromptLong` - open a temporary prompt buffer for a longer instruction
 
 Both commands should work from normal mode and visual mode.
@@ -148,12 +145,11 @@ Notes:
 
 Start simple.
 
-- tmux path: launch the harness in a split so the user can watch the run
-- non-tmux path: launch the harness as a background job and capture stdout/stderr into the scratch result buffer
+- launch the harness as a background job and capture stdout/stderr into the scratch result buffer
 - prefer passing prompt content as arguments rather than relying on stdin for the main flow
 - use `opencode run` by default for editor-triggered runs
 
-The important rule is that the final readable output should still end up in Neovim, even if tmux is used for live execution.
+The important rule is that the final readable output should end up in Neovim.
 
 Possible initial command shape:
 
@@ -173,7 +169,7 @@ We should not start with RPC unless the simpler path proves too limiting.
 - search/quickfix workflows inspired by `99`
 - diff review UI
 - approval gates for tool calls
-- fancy status UI beyond a result buffer or tmux split
+- fancy status UI beyond a result buffer
 
 ## Implementation Sketch
 
@@ -185,8 +181,8 @@ lua/cinder/init.lua        setup entrypoint
 lua/cinder/config.lua      defaults and validation
 lua/cinder/context.lua     file, cursor, selection context collection
 lua/cinder/prompt.lua      prompt composition
-lua/cinder/runner.lua      tmux launch and job fallback
-lua/cinder/ui.lua          input prompt, long prompt buffer, result buffer
+lua/cinder/runner.lua      background job launch
+lua/cinder/ui.lua          prompt buffers and result buffer
 ```
 
 ## Development Order
@@ -195,17 +191,16 @@ lua/cinder/ui.lua          input prompt, long prompt buffer, result buffer
 2. Add quick prompt command.
 3. Collect file, cursor, and visual selection context.
 4. Compose the prompt.
-5. Implement tmux split launch.
-6. Implement background job fallback with a scratch result buffer.
-7. Refresh changed buffers when the run completes.
-8. Add the long prompt buffer command.
+5. Implement background job launch with a scratch result buffer.
+6. Refresh changed buffers when the run completes.
+7. Add the long prompt buffer command.
 
 ## Open Questions For Later
 
 - Should we add a dedicated search command that fills quickfix, similar to `99`?
 - Should small files optionally be inlined into the prompt?
 - Should we support auto-loading project rules once the base flow feels solid?
-- Should we switch the non-tmux runner to JSON or RPC mode for richer progress updates?
+- Should we switch the runner to JSON or RPC mode for richer progress updates?
 
 ## Installation
 
@@ -235,12 +230,6 @@ require("cinder").setup({
     "openai/gpt-5.4",
   },
   session_mode = "buffer",
-  execution_mode = "auto",
-  tmux = {
-    orientation = "vertical",
-    size = 40,
-    poll_interval = 200,
-  },
   result_buffer = {
     name = "Cinder Results",
     open = true,
@@ -258,9 +247,10 @@ require("cinder").setup({
 
 ## Commands
 
-- `:CinderPrompt` prompts for a short instruction using the current file context.
+- `:CinderPrompt` opens a prompt buffer for the current file context.
 - `:CinderPromptLong` opens a scratch buffer in its own split for a longer task.
 - `:CinderContinue` sends the result buffer draft back into the active session.
+- `:CinderJobs` opens a scratch buffer showing running and completed Cinder jobs.
 - `:CinderSessionReset` clears the current session association.
 - `:CinderModel` shows the active model, or sets it when passed an argument.
 - `:CinderModelSelect` opens a picker for the configured model list.
@@ -276,8 +266,7 @@ Both commands work from normal mode and visual mode.
 - If the current buffer is not file-backed, the plugin skips editor context and sends only the user task.
 - With `selection_behavior = "auto"`, an empty prompt plus a non-block visual selection uses the selected text as the request and replaces only that selected range with the model output.
 - The whole file is not inlined by default.
-- If Neovim is inside tmux and `execution_mode` is `auto`, the harness runs in a tmux split.
-- Otherwise the harness runs as a background Neovim job and streams output into the result buffer.
+- The harness runs as a background Neovim job and streams output into the result buffer.
 - After the harness exits, `cinder.nvim` refreshes changed file-backed buffers with `:checktime` and appends a short completion summary.
 - The default invocation is `opencode run`.
 - The default model is `openai/gpt-5.4` and is passed as `--model` when the harness supports it.
@@ -301,7 +290,12 @@ Both commands work from normal mode and visual mode.
 - When auto-open is enabled, the result buffer opens in its own split instead of replacing your current editing buffer.
 - With the default `opencode run` setup, the result buffer shows captured plain-text output instead of raw event JSON.
 - Background stderr is prefixed with `[stderr]`.
-- Tmux runs still import final output back into the result buffer after completion.
+
+## Diagnostics
+
+- Cinder writes debug lifecycle logs to `stdpath("state") .. "/cinder.log"`.
+- The log includes prompt submission, job launch, stdout/stderr callbacks, and process exit events.
+- Use `:CinderJobs` to inspect currently running and completed runs from inside Neovim.
 
 ## Selection Behavior
 

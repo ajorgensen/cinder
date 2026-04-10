@@ -6,12 +6,6 @@ local defaults = {
   model = "openai/gpt-5.4",
   models = { "openai/gpt-5.4" },
   session_mode = "buffer",
-  execution_mode = "auto",
-  tmux = {
-    orientation = "vertical",
-    size = 40,
-    poll_interval = 200,
-  },
   result_buffer = {
     name = "Cinder Results",
     open = true,
@@ -104,15 +98,6 @@ local function validate(options)
   validate_string("model", options.model)
   validate_array("models", options.models)
   validate_enum("session_mode", options.session_mode, { "off", "buffer" })
-  validate_enum("execution_mode", options.execution_mode, { "auto", "tmux", "job" })
-  ensure_type("tmux", options.tmux, "table")
-  validate_enum("tmux.orientation", options.tmux.orientation, { "vertical", "horizontal" })
-  if type(options.tmux.size) ~= "number" or options.tmux.size <= 0 then
-    error("cinder.nvim config error: tmux.size must be a positive number", 0)
-  end
-  if type(options.tmux.poll_interval) ~= "number" or options.tmux.poll_interval <= 0 then
-    error("cinder.nvim config error: tmux.poll_interval must be a positive number", 0)
-  end
   ensure_type("result_buffer", options.result_buffer, "table")
   validate_string("result_buffer.name", options.result_buffer.name)
   if type(options.result_buffer.open) ~= "boolean" then

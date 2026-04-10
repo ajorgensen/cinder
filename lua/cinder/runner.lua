@@ -1,4 +1,5 @@
 local M = {}
+local log = require("cinder.debug")
 
 local OPENCODE_CONTINUE_SESSION = "opencode:last"
 
@@ -94,34 +95,6 @@ local function collect_data(chunks, data)
   return text
 end
 
-local function shell_join(argv)
-  local escaped = vim.tbl_map(vim.fn.shellescape, argv)
-  return table.concat(escaped, " ")
-end
-
-local function write_file(path, lines)
-  local file = assert(io.open(path, "w"))
-  file:write(table.concat(lines, "\n"))
-  file:write("\n")
-  file:close()
-end
-
-local function build_tmux_script_lines(argv, stdout_file, stderr_file, exit_file)
-  return {
-    "#!/usr/bin/env bash",
-    string.format("%s > >(tee %s) 2> >(tee %s >&2)", shell_join(argv), vim.fn.shellescape(stdout_file), vim.fn.shellescape(stderr_file)),
-    "status=$?",
-    string.format("printf '%s\\n' \"$status\" > %s", "%s", vim.fn.shellescape(exit_file)),
-  }
-end
-
-local function write_tmux_script(argv, stdout_file, stderr_file, exit_file)
-  local script_file = vim.fn.tempname()
-  write_file(script_file, build_tmux_script_lines(argv, stdout_file, stderr_file, exit_file))
-  vim.fn.setfperm(script_file, "rwx------")
-  return script_file
-end
-
 local function build_argv(config, prompt, opts)
   opts = opts or {}
   local argv = { config.harness_command }
@@ -177,26 +150,6 @@ local function build_argv(config, prompt, opts)
   return argv
 end
 
-local function is_tmux_available()
-  return vim.env.TMUX and vim.fn.executable("tmux") == 1
-end
-
-local function choose_backend(config)
-  if config.execution_mode == "job" then
-    return "job"
-  end
-  if config.execution_mode == "tmux" then
-    if not is_tmux_available() then
-      error("cinder.nvim could not launch tmux: Neovim is not running inside tmux or tmux is unavailable", 0)
-    end
-    return "tmux"
-  end
-  if is_tmux_available() then
-    return "tmux"
-  end
-  return "job"
-end
-
 local function run_job(argv, callbacks)
   local meta = {
     backend = "job",
@@ -212,16 +165,28 @@ local function run_job(argv, callbacks)
     on_stdout = function(_, data)
       local text = collect_data(stdout_chunks, data)
       if text and not json_mode then
+        log.log("runner.stdout", {
+          job_id = meta.job_id,
+          bytes = #text,
+        })
         callbacks.on_stdout(text)
       end
     end,
     on_stderr = function(_, data)
       local text = collect_data(stderr_chunks, data)
       if text then
+        log.log("runner.stderr", {
+          job_id = meta.job_id,
+          bytes = #text,
+        })
         callbacks.on_stderr(text)
       end
     end,
     on_exit = function(_, code)
+      log.log("runner.exit", {
+        job_id = meta.job_id,
+        code = code,
+      })
       callbacks.on_complete(finalize_output(vim.tbl_extend("force", meta, {
         code = code,
       }), stdout_chunks, stderr_chunks))
@@ -229,82 +194,20 @@ local function run_job(argv, callbacks)
   })
 
   if job_id <= 0 then
+    log.log("runner.launch_failed", {
+      command = argv,
+    })
     error(string.format("cinder.nvim failed to launch %s", argv[1]), 0)
   end
 
   meta.job_id = job_id
-  return meta
-end
-
-local function tmux_flag(config)
-  if config.tmux.orientation == "horizontal" then
-    return "-v"
-  end
-  return "-h"
-end
-
-local function read_file(path)
-  local file = io.open(path, "r")
-  if not file then
-    return ""
-  end
-  local content = file:read("*a") or ""
-  file:close()
-  return content
-end
-
-local function start_tmux_poll(config, meta, callbacks)
-  local timer = assert(vim.uv.new_timer())
-  timer:start(config.tmux.poll_interval, config.tmux.poll_interval, vim.schedule_wrap(function()
-    local exit_stat = vim.uv.fs_stat(meta.exit_file)
-    if not exit_stat then
-      return
-    end
-
-    timer:stop()
-    timer:close()
-
-    local code = tonumber(vim.trim(read_file(meta.exit_file))) or 1
-    callbacks.on_complete(finalize_output(vim.tbl_extend("force", meta, {
-      code = code,
-    }), { read_file(meta.stdout_file) }, { read_file(meta.stderr_file) }))
-  end))
-end
-
-local function run_tmux(config, argv, callbacks)
-  local stdout_file = vim.fn.tempname()
-  local stderr_file = vim.fn.tempname()
-  local exit_file = vim.fn.tempname()
-  local script_file = write_tmux_script(argv, stdout_file, stderr_file, exit_file)
-
-  local command = {
-    "tmux",
-    "split-window",
-    "-P",
-    "-F",
-    "#{pane_id}",
-    tmux_flag(config),
-    "-l",
-    tostring(config.tmux.size),
-    vim.fn.shellescape(script_file),
-  }
-
-  local pane_id = vim.trim(vim.fn.system(command))
-  if vim.v.shell_error ~= 0 or pane_id == "" then
-    error("cinder.nvim could not create a tmux split for the harness run", 0)
-  end
-
-  local meta = {
-    backend = "tmux",
+  meta.pid = vim.fn.jobpid(job_id)
+  log.log("runner.started", {
+    job_id = job_id,
+    pid = meta.pid,
     command = argv,
-    pane_id = pane_id,
-    stdout_file = stdout_file,
-    stderr_file = stderr_file,
-    exit_file = exit_file,
-    script_file = script_file,
-  }
-
-  start_tmux_poll(config, meta, callbacks)
+    json_mode = json_mode,
+  })
   return meta
 end
 
@@ -315,30 +218,17 @@ function M.run(opts)
     session_file = opts.session_file,
     force_no_session = opts.force_no_session,
   })
-  local backend = choose_backend(config)
   local callbacks = {
     on_stdout = opts.on_stdout or function() end,
     on_stderr = opts.on_stderr or function() end,
     on_complete = opts.on_complete or function() end,
   }
 
-  if backend == "tmux" then
-    return run_tmux(config, argv, callbacks)
-  end
-
   return run_job(argv, callbacks)
-end
-
-function M.choose_backend(config)
-  return choose_backend(config)
 end
 
 function M.build_argv(config, prompt, opts)
   return build_argv(config, prompt, opts)
-end
-
-function M._build_tmux_script_lines(argv, stdout_file, stderr_file, exit_file)
-  return build_tmux_script_lines(argv, stdout_file, stderr_file, exit_file)
 end
 
 function M.opencode_continue_session()

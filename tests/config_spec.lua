@@ -5,28 +5,13 @@ return {
     name = "config merges defaults",
     run = function()
       h.reset()
-      local cfg = require("cinder.config").setup({
-        execution_mode = "job",
-      })
+      local cfg = require("cinder.config").setup()
 
       h.eq(cfg.harness_command, "opencode")
       h.eq(cfg.model, "openai/gpt-5.4")
       h.eq(cfg.models[1], "openai/gpt-5.4")
       h.eq(cfg.session_mode, "buffer")
-      h.eq(cfg.execution_mode, "job")
       h.eq(cfg.harness_args[1], "run")
-    end,
-  },
-  {
-    name = "config rejects invalid execution mode",
-    run = function()
-      h.reset()
-      local ok, err = pcall(function()
-        require("cinder.config").setup({ execution_mode = "bad" })
-      end)
-
-      h.expect(not ok, "expected config validation to fail")
-      h.contains(err, "execution_mode")
     end,
   },
   {

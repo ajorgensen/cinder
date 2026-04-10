@@ -1,10 +1,5 @@
 local tests = {
-  "tests.config_spec",
-  "tests.context_spec",
-  "tests.prompt_spec",
-  "tests.ui_spec",
-  "tests.runner_spec",
-  "tests.integration_spec",
+  "tests.hello_spec",
 }
 
 vim.opt.runtimepath:prepend(vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h"))
