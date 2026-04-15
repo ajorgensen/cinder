@@ -1,0 +1,60 @@
+*cinder.txt*    cinder.nvim
+
+cinder.nvim is a proof-of-concept Neovim plugin for running background agent
+tasks.
+
+Current provider split:
+        Ask uses a pi RPC adapter.
+        Do uses a fake provider scaffold.
+
+COMMANDS                                                *cinder-commands*
+
+:Cinder
+        Open or reuse the composer buffer.
+
+:Cinder send
+        Submit the draft from the composer buffer.
+
+:Cinder do {prompt}
+        Start a background Do run for the current editing context.
+
+:Cinder runs
+        Open a scratch buffer listing in-memory runs.
+
+:Cinder kill {run_id}
+        Cancel a run by id.
+
+:Cinder doctor
+        Open a scratch report with provider/config validation.
+
+CONFIGURATION                                        *cinder-configuration*
+
+>lua
+  require("cinder").setup({
+    provider = "pi",
+    model = nil,
+
+    profiles = {
+      fake = { provider = "fake", model = "fake-do" },
+    },
+
+    ask = {
+      profile = nil,
+    },
+
+    inline = {
+      profile = "fake",
+    },
+
+    providers = {
+      pi = {
+        cmd = "pi",
+        args = { "--mode", "rpc", "--no-session" },
+      },
+      fake = {
+        interval_ms = 30,
+        total_ticks = 4,
+      },
+    },
+  })
+<
