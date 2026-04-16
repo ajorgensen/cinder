@@ -3,6 +3,8 @@ local state = require("cinder.state")
 local M = {}
 
 local DRAFT_LABEL = "Draft (use :Cinder send):"
+local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+local SPINNER_INTERVAL_MS = 80
 
 local function scratch_buffer(name, filetype, opts)
   opts = opts or {}
@@ -37,6 +39,17 @@ local function find_draft_start(lines)
   return nil
 end
 
+local function status_line(session)
+  local status = session and session.status or "idle"
+
+  if session and session.spinner_timer then
+    local frame = SPINNER_FRAMES[(session.spinner_frame or 0) + 1] or SPINNER_FRAMES[1]
+    return string.format("Status: %s %s", frame, status)
+  end
+
+  return string.format("Status: %s", status)
+end
+
 local function render_composer(bufnr)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
@@ -46,14 +59,14 @@ local function render_composer(bufnr)
   local session = session_id ~= "unassigned" and state.get_session(session_id) or nil
   local provider = session and session.provider or "unknown"
   local model = session and session.model or "-"
-  local status = session and session.status or "idle"
   local transcript = session and session.transcript or {}
   local draft_lines = session and session.draft_lines or { "" }
+  local pending_response = session and session.pending_response or nil
   local lines = {
     "Cinder",
     string.format("Session: %s", session_id),
     string.format("Backend: %s/%s", provider, model),
-    string.format("Status: %s", status),
+    status_line(session),
     "",
     "Transcript:",
   }
@@ -62,7 +75,13 @@ local function render_composer(bufnr)
     lines[#lines + 1] = line
   end
 
-  if #transcript == 0 then
+  if pending_response and pending_response ~= "" then
+    for _, line in ipairs(split_text(pending_response)) do
+      lines[#lines + 1] = line
+    end
+
+    lines[#lines + 1] = ""
+  elseif #transcript == 0 then
     lines[#lines + 1] = ""
   end
 
@@ -184,7 +203,83 @@ function M.append_composer_response(bufnr, text)
   end
 
   session.transcript[#session.transcript + 1] = ""
+  session.pending_response = nil
   render_composer(bufnr)
+end
+
+function M.set_composer_pending_response(bufnr, text)
+  local session = state.get_session(vim.b[bufnr].cinder_session_id)
+
+  if not session then
+    return
+  end
+
+  session.pending_response = text
+  render_composer(bufnr)
+end
+
+function M.clear_composer_pending_response(bufnr)
+  local session = state.get_session(vim.b[bufnr].cinder_session_id)
+
+  if not session then
+    return
+  end
+
+  session.pending_response = nil
+  render_composer(bufnr)
+end
+
+function M.start_composer_spinner(bufnr)
+  local session_id = vim.b[bufnr].cinder_session_id
+
+  if not session_id then
+    return
+  end
+
+  local session = state.get_session(session_id)
+
+  if not session or session.spinner_timer then
+    return
+  end
+
+  session.spinner_frame = 0
+
+  local uv = vim.uv or vim.loop
+  local timer = uv.new_timer()
+  session.spinner_timer = timer
+
+  timer:start(SPINNER_INTERVAL_MS, SPINNER_INTERVAL_MS, vim.schedule_wrap(function()
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+      M.stop_composer_spinner(session)
+      return
+    end
+
+    session.spinner_frame = ((session.spinner_frame or 0) + 1) % #SPINNER_FRAMES
+    render_composer(bufnr)
+  end))
+end
+
+function M.stop_composer_spinner(session)
+  if type(session) == "number" then
+    session = state.get_session(vim.b[session].cinder_session_id)
+  end
+
+  if not session or not session.spinner_timer then
+    return
+  end
+
+  local timer = session.spinner_timer
+  session.spinner_timer = nil
+  session.spinner_frame = 0
+
+  if not timer:is_closing() then
+    timer:stop()
+    timer:close()
+  end
+
+  if session.bufnr and vim.api.nvim_buf_is_valid(session.bufnr) then
+    render_composer(session.bufnr)
+  end
 end
 
 function M.get_composer_draft(bufnr)

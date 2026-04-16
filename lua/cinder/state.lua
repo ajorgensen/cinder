@@ -43,6 +43,9 @@ function M.create_session(bufnr, fields)
     source_bufnr = nil,
     pending_context = nil,
     transcript = {},
+    pending_response = nil,
+    spinner_frame = 0,
+    spinner_timer = nil,
     draft_lines = { "" },
     status = "idle",
   }, fields or {})
@@ -55,6 +58,7 @@ function M.create_session(bufnr, fields)
     once = true,
     callback = function()
       require("cinder.providers").stop_session(session)
+      require("cinder.ui").stop_composer_spinner(session)
       M.sessions[session.session_id] = nil
     end,
   })

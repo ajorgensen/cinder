@@ -112,6 +112,15 @@ local function handle_event(process, event)
 
   if event.type == "message_update" and event.message and event.message.role == "assistant" then
     callbacks.on_progress(run, "streaming")
+
+    if callbacks.on_message_delta then
+      local partial = extract_text(event.message)
+
+      if partial ~= "" then
+        callbacks.on_message_delta(run, partial)
+      end
+    end
+
     return
   end
 

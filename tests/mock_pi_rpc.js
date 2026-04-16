@@ -32,10 +32,17 @@ function clearPending() {
 function finishPrompt(command) {
   turn += 1;
 
-  const message = textMessage(`mock pi response turn ${turn}: ${command.message}`);
+  const fullText = `mock pi response turn ${turn}: ${command.message}`;
+  const cuts = [Math.min(8, fullText.length), Math.min(24, fullText.length), fullText.length];
 
   write({ type: "agent_start" });
-  write({ type: "message_update", message, assistantMessageEvent: { type: "text" } });
+
+  for (const cut of cuts) {
+    const partial = textMessage(fullText.slice(0, cut));
+    write({ type: "message_update", message: partial, assistantMessageEvent: { type: "text" } });
+  }
+
+  const message = textMessage(fullText);
   write({ type: "message_end", message });
   write({ type: "agent_end", messages: [message] });
 }
