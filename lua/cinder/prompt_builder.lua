@@ -14,31 +14,14 @@ local function append_block(lines, title, body_lines)
   push(lines, "")
 end
 
-function M.build_ask_prompt(prompt, context)
+function M.build_ask_prompt(prompt, _context)
   local lines = {}
-  local file_path = context.file_path
-
-  if not file_path or file_path == "" then
-    file_path = "[No Name]"
-  end
 
   append_block(lines, "User request:", {
     prompt,
   })
 
-  append_block(lines, "Current file:", {
-    file_path,
-  })
-
-  if context.selection then
-    append_block(lines, string.format(
-      "Selected lines (%d-%d):",
-      context.selection.start_line,
-      context.selection.end_line
-    ), context.selection.lines)
-  end
-
-  push(lines, "Use the editor context above if it is relevant.")
+  push(lines, "Use any file paths or code snippets in the request as context if relevant.")
 
   return table.concat(lines, "\n")
 end

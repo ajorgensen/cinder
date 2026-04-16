@@ -8,6 +8,8 @@ local M = {}
 
 local subcommands = { "do", "send", "runs", "kill", "doctor" }
 
+local MAX_INLINE_CONTEXT_LINES = 10
+
 local function notify(message, level)
   vim.notify(message, level or vim.log.levels.INFO)
 end
@@ -45,6 +47,47 @@ end
 
 local function capture_context(opts)
   return capture_context_from_buf(vim.api.nvim_get_current_buf(), opts)
+end
+
+local function format_context_block(context)
+  if not context then
+    return nil
+  end
+
+  local file_path = context.file_path or ""
+
+  if file_path == "" and not context.selection then
+    return nil
+  end
+
+  if file_path == "" then
+    file_path = "[No Name]"
+  else
+    file_path = vim.fn.fnamemodify(file_path, ":.")
+  end
+
+  if not context.selection then
+    return { file_path }
+  end
+
+  local header = string.format(
+    "%s:%d-%d",
+    file_path,
+    context.selection.start_line,
+    context.selection.end_line
+  )
+
+  if #context.selection.lines > MAX_INLINE_CONTEXT_LINES then
+    return { header }
+  end
+
+  local block = { header }
+
+  for _, line in ipairs(context.selection.lines) do
+    block[#block + 1] = line
+  end
+
+  return block
 end
 
 local function stop_composer_spinner(active_run)
@@ -190,7 +233,20 @@ local function ensure_composer_buffer(opts)
 end
 
 local function open_composer(opts)
-  ensure_composer_buffer(opts)
+  local display_bufnr = ensure_composer_buffer(opts)
+  local context = opts and opts.context
+  local from_composer = context and context.bufnr == display_bufnr
+  local block = not from_composer and format_context_block(context) or nil
+
+  if block then
+    ui.append_to_composer_draft(display_bufnr, block)
+
+    local session = state.get_session(vim.b[display_bufnr].cinder_session_id)
+
+    if session and session.pending_context then
+      session.pending_context.selection = nil
+    end
+  end
 end
 
 local function run_composer_prompt(prompt, source_context, display_bufnr, source_bufnr)

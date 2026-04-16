@@ -98,6 +98,11 @@ vim.api.nvim_buf_set_lines(0, 0, -1, false, {
 
 vim.cmd("Cinder")
 assert(vim.api.nvim_get_current_buf() == composer_buf, "expected bare :Cinder to reuse composer after editing source")
+
+local expected_path_display = vim.fn.fnamemodify(example_path, ":.")
+local draft_after_bare = get_composer_draft(composer_buf)
+assert(draft_after_bare:find(expected_path_display, 1, true), "expected bare :Cinder to append source file path to draft")
+
 vim.api.nvim_set_current_buf(original_buf)
 
 vim.cmd("Cinder do rename this function")
@@ -113,6 +118,8 @@ assert(first_run.kind == "do", "expected first run to be a do run")
 vim.api.nvim_set_current_buf(composer_buf)
 set_composer_draft(composer_buf, {
   "what is wrong with this program?",
+  "",
+  expected_path_display,
 })
 vim.cmd("Cinder send")
 
@@ -130,8 +137,7 @@ assert(send_text:find("Session: composer%-1", 1), "expected composer header to i
 assert(send_text:find("Backend: pi/%-", 1), "expected composer header to include provider and model")
 assert(send_text:find("> what is wrong with this program%?", 1), "expected transcript to include the composer prompt")
 assert(send_text:find("mock pi response turn 1", 1, true), "expected transcript to include the first mock pi response")
-assert(send_text:find("Current file:", 1, true), "expected prompt sent to pi to include a current file block")
-assert(send_text:find(example_path, 1, true), "expected prompt sent to pi to include the source file path")
+assert(send_text:find(expected_path_display, 1, true), "expected prompt sent to pi to echo the source file path from the draft")
 
 local send_session = state.get_session(send_run.session_id)
 assert(send_session.pending_response == nil, "expected pending_response to clear after completion")
@@ -162,9 +168,19 @@ vim.api.nvim_set_current_buf(original_buf)
 vim.cmd("2,3Cinder")
 assert(vim.api.nvim_get_current_buf() == composer_buf, "expected ranged bare :Cinder to reuse the composer buffer")
 
-set_composer_draft(composer_buf, {
-  "where is this function used",
-})
+local draft_after_range = get_composer_draft(composer_buf)
+assert(draft_after_range:find(":2%-3", 1), "expected ranged :Cinder to append a context header to the draft")
+assert(draft_after_range:find("function M.answer%(%)", 1), "expected ranged :Cinder to append selected lines to the draft")
+assert(draft_after_range:find("  return 42", 1, true), "expected ranged :Cinder to append selected return line to the draft")
+
+vim.api.nvim_set_current_buf(original_buf)
+vim.cmd("1Cinder")
+local draft_stacked = get_composer_draft(composer_buf)
+assert(draft_stacked:find(":1%-1", 1), "expected second ranged :Cinder to append another context header")
+assert(draft_stacked:find("local M = {}", 1, true), "expected second ranged :Cinder to append its selected line")
+assert(draft_stacked:find("function M.answer%(%)", 1), "expected previous context block to remain after stacking")
+
+vim.api.nvim_set_current_buf(composer_buf)
 vim.cmd("Cinder send")
 
 assert(vim.wait(200, function()
@@ -176,9 +192,23 @@ local ranged_run = state.get_run(4)
 local ranged_lines = vim.api.nvim_buf_get_lines(ranged_run.display_bufnr, 0, -1, false)
 local ranged_text = table.concat(ranged_lines, "\n")
 
-assert(ranged_text:find("Selected lines %(2%-3%)", 1), "expected ranged composer send to include selected line range")
-assert(ranged_text:find("function M.answer%(%)", 1), "expected ranged composer send to include selected lines")
-assert(ranged_text:find("  return 42", 1, true), "expected ranged composer send to include selected return line")
+assert(ranged_text:find(":2%-3", 1), "expected sent prompt to echo first context header")
+assert(ranged_text:find(":1%-1", 1), "expected sent prompt to echo second context header")
+assert(ranged_text:find("function M.answer%(%)", 1), "expected sent prompt to echo selected function line")
+assert(ranged_text:find("  return 42", 1, true), "expected sent prompt to echo selected return line")
+
+vim.api.nvim_set_current_buf(original_buf)
+local large_lines = {}
+for i = 1, 15 do
+  large_lines[i] = string.format("line %02d content", i)
+end
+vim.api.nvim_buf_set_lines(original_buf, 0, -1, false, large_lines)
+
+vim.cmd("1,15Cinder")
+local draft_large = get_composer_draft(composer_buf)
+assert(draft_large:find(":1%-15", 1), "expected large-range :Cinder to append header with full range")
+assert(not draft_large:find("line 07 content", 1, true), "expected large-range :Cinder to omit selected line body")
+assert(not draft_large:find("line 15 content", 1, true), "expected large-range :Cinder to omit selected line body")
 
 cinder.setup({
   provider = "pi",
