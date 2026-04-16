@@ -47,6 +47,18 @@ local function capture_context(opts)
   return capture_context_from_buf(vim.api.nvim_get_current_buf(), opts)
 end
 
+local function stop_composer_spinner(active_run)
+  if active_run.kind ~= "composer" then
+    return
+  end
+
+  local session = state.get_session(active_run.session_id)
+
+  if session then
+    ui.stop_composer_spinner(session)
+  end
+end
+
 local function callbacks_for(run)
   return {
     on_progress = function(active_run, frame)
@@ -59,6 +71,11 @@ local function callbacks_for(run)
         ui.set_do_progress(active_run, string.format("running %s", frame))
       end
     end,
+    on_message_delta = function(active_run, text)
+      if active_run.kind == "composer" then
+        ui.set_composer_pending_response(active_run.display_bufnr, text)
+      end
+    end,
     on_message_final = function(active_run, text)
       ui.append_composer_response(active_run.display_bufnr, text)
     end,
@@ -69,6 +86,7 @@ local function callbacks_for(run)
       })
 
       if active_run.kind == "composer" then
+        stop_composer_spinner(active_run)
         ui.update_composer_header(active_run.display_bufnr, "done")
       else
         ui.set_do_progress(active_run, "done", "String")
@@ -84,6 +102,8 @@ local function callbacks_for(run)
       })
 
       if active_run.kind == "composer" then
+        stop_composer_spinner(active_run)
+        ui.clear_composer_pending_response(active_run.display_bufnr)
         ui.update_composer_header(active_run.display_bufnr, "cancelled")
         ui.append_composer_response(active_run.display_bufnr, "[cancelled]")
       else
@@ -98,6 +118,8 @@ local function callbacks_for(run)
       })
 
       if active_run.kind == "composer" then
+        stop_composer_spinner(active_run)
+        ui.clear_composer_pending_response(active_run.display_bufnr)
         ui.update_composer_header(active_run.display_bufnr, "failed")
         ui.append_composer_response(active_run.display_bufnr, string.format("[error] %s", message))
       else
@@ -196,6 +218,7 @@ local function run_composer_prompt(prompt, source_context, display_bufnr, source
 
   ui.update_composer_header(display_bufnr, "running")
   ui.append_composer_prompt(display_bufnr, prompt)
+  ui.start_composer_spinner(display_bufnr)
 
   local run = state.create_run({
     kind = "composer",

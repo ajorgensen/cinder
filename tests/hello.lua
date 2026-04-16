@@ -133,6 +133,10 @@ assert(send_text:find("mock pi response turn 1", 1, true), "expected transcript 
 assert(send_text:find("Current file:", 1, true), "expected prompt sent to pi to include a current file block")
 assert(send_text:find(example_path, 1, true), "expected prompt sent to pi to include the source file path")
 
+local send_session = state.get_session(send_run.session_id)
+assert(send_session.pending_response == nil, "expected pending_response to clear after completion")
+assert(send_session.spinner_timer == nil, "expected spinner to stop after completion")
+
 local draft_after_send = get_composer_draft(composer_buf)
 assert(draft_after_send == "", "expected composer draft to clear after send")
 
