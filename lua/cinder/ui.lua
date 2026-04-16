@@ -117,6 +117,13 @@ function M.open_composer_buffer()
 end
 
 function M.show_composer_buffer(bufnr)
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if vim.api.nvim_win_get_buf(win) == bufnr then
+      vim.api.nvim_set_current_win(win)
+      return
+    end
+  end
+
   local config = require("cinder").get_config()
 
   vim.cmd(config.ui.composer_open_cmd)
@@ -302,6 +309,36 @@ function M.clear_composer_draft(bufnr)
   end
 
   session.draft_lines = { "" }
+  render_composer(bufnr)
+end
+
+function M.append_to_composer_draft(bufnr, lines)
+  if not lines or #lines == 0 then
+    return
+  end
+
+  M.sync_composer_draft(bufnr)
+
+  local session = state.get_session(vim.b[bufnr].cinder_session_id)
+
+  if not session then
+    return
+  end
+
+  local draft = session.draft_lines or { "" }
+  local is_empty = #draft == 0 or (#draft == 1 and draft[1] == "")
+
+  if is_empty then
+    draft = {}
+  elseif draft[#draft] ~= "" then
+    draft[#draft + 1] = ""
+  end
+
+  for _, line in ipairs(lines) do
+    draft[#draft + 1] = line
+  end
+
+  session.draft_lines = draft
   render_composer(bufnr)
 end
 
