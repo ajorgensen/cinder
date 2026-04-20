@@ -6,7 +6,7 @@ local ui = require("cinder.ui")
 
 local M = {}
 
-local subcommands = { "do", "send", "runs", "kill", "doctor" }
+local subcommands = { "do", "send", "runs", "kill", "doctor", "new" }
 
 local MAX_INLINE_CONTEXT_LINES = 10
 
@@ -379,6 +379,59 @@ local function kill(opts)
   end
 end
 
+local function new_session(opts)
+  local current_buf = vim.api.nvim_get_current_buf()
+  local from_composer = vim.b[current_buf].cinder_session_id ~= nil
+  local session = from_composer and state.get_session(vim.b[current_buf].cinder_session_id) or nil
+
+  if not session then
+    session = state.find_latest_session()
+  end
+
+  local source_bufnr = (not from_composer) and current_buf or nil
+  local context = (not from_composer) and opts and opts.context or nil
+
+  if not session then
+    return open_composer({
+      source_bufnr = source_bufnr,
+      context = context,
+    })
+  end
+
+  local target_bufnr = session.bufnr
+  local active_run = state.get_session_active_run(session.session_id)
+
+  if active_run then
+    state.update_run(active_run, {
+      status = "cancelled",
+    })
+  end
+
+  providers.stop_session(session)
+  ui.stop_composer_spinner(session)
+  state.sessions[session.session_id] = nil
+
+  if not target_bufnr or not vim.api.nvim_buf_is_valid(target_bufnr) then
+    notify("no composer buffer to start a new session", vim.log.levels.WARN)
+    return
+  end
+
+  vim.b[target_bufnr].cinder_session_id = nil
+
+  local profile = providers.resolve("ask")
+
+  state.create_session(target_bufnr, {
+    provider = profile.provider,
+    model = profile.model,
+    source_bufnr = source_bufnr,
+    pending_context = context,
+  })
+
+  ui.update_composer_header(target_bufnr, "idle")
+  ui.show_composer_buffer(target_bufnr)
+  notify("Cinder composer started new session")
+end
+
 function M.complete(arglead, cmdline, _)
   if cmdline:match("^%s*%S+%s+kill%s+") then
     local matches = {}
@@ -428,6 +481,10 @@ function M.execute(subcommand, opts)
 
   if subcommand == "doctor" then
     return show_doctor()
+  end
+
+  if subcommand == "new" then
+    return new_session(command_opts)
   end
 
   notify(string.format("unknown subcommand: %s", tostring(subcommand)), vim.log.levels.ERROR)

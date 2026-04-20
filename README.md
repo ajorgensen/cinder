@@ -37,6 +37,7 @@ Command surface:
 :Cinder runs
 :Cinder kill 3
 :Cinder doctor
+:Cinder new
 ```
 
 ## Current Behavior
@@ -50,6 +51,7 @@ Command surface:
 - `kill` cancels an active run by id.
 - `kill` without an id in the composer aborts the active Pi run for that session.
 - `doctor` opens a scratch report with local provider/config validation.
+- `new` discards the current composer session and starts a fresh one in the same buffer, stopping any active Pi RPC process.
 
 ## Configuration
 
