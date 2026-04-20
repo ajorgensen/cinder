@@ -385,6 +385,10 @@ function M.stop_session(session)
   end
 
   session_processes[session.session_id] = nil
+  process.current_run_id = nil
+  process.current_run = nil
+  process.current_callbacks = nil
+  process.last_assistant_message = nil
   vim.fn.jobstop(process.job_id)
 end
 

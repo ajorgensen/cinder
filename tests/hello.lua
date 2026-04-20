@@ -210,6 +210,53 @@ assert(draft_large:find(":1%-15", 1), "expected large-range :Cinder to append he
 assert(not draft_large:find("line 07 content", 1, true), "expected large-range :Cinder to omit selected line body")
 assert(not draft_large:find("line 15 content", 1, true), "expected large-range :Cinder to omit selected line body")
 
+local pre_new_session_id = vim.b[composer_buf].cinder_session_id
+assert(pre_new_session_id == "composer-1", "expected composer session to be composer-1 before starting a new session")
+
+vim.api.nvim_set_current_buf(composer_buf)
+vim.cmd("Cinder new")
+
+local post_new_session_id = vim.b[composer_buf].cinder_session_id
+assert(post_new_session_id and post_new_session_id ~= pre_new_session_id,
+  "expected :Cinder new to create a new session in the composer buffer")
+assert(state.get_session(pre_new_session_id) == nil, "expected previous session to be removed from state")
+
+local new_session = state.get_session(post_new_session_id)
+assert(new_session, "expected new session to exist after :Cinder new")
+assert(#new_session.transcript == 0, "expected new session transcript to be empty after :Cinder new")
+assert(new_session.status == "idle", "expected new session status to be idle")
+
+local draft_after_new = get_composer_draft(composer_buf)
+assert(draft_after_new == "", "expected composer draft to be empty after :Cinder new")
+
+local new_text = table.concat(vim.api.nvim_buf_get_lines(composer_buf, 0, -1, false), "\n")
+assert(not new_text:find("mock pi response turn", 1, true), "expected transcript entries to be cleared after :Cinder new")
+assert(new_text:find(string.format("Session: %s", post_new_session_id), 1, true),
+  "expected composer header to show the new session id after :Cinder new")
+
+set_composer_draft(composer_buf, {
+  "question after new",
+})
+vim.cmd("Cinder send")
+
+local post_new_run_id = nil
+
+assert(vim.wait(400, function()
+  for _, run in ipairs(state.list_runs()) do
+    if run.session_id == post_new_session_id and run.status == "done" then
+      post_new_run_id = run.id
+      return true
+    end
+  end
+  return false
+end, 10), "expected composer send after :Cinder new to finish")
+
+local post_new_run = state.get_run(post_new_run_id)
+local post_new_lines = vim.api.nvim_buf_get_lines(post_new_run.display_bufnr, 0, -1, false)
+local post_new_transcript = table.concat(post_new_lines, "\n")
+assert(post_new_transcript:find("mock pi response turn 1", 1, true),
+  "expected post-new send to receive turn 1 from a fresh pi process")
+
 cinder.setup({
   provider = "pi",
   model = nil,
@@ -246,7 +293,7 @@ vim.cmd("Cinder send")
 vim.cmd("Cinder kill")
 
 assert(vim.wait(200, function()
-  local run = state.get_run(6)
+  local run = state.get_run(7)
   return run and run.status == "cancelled"
 end, 10), "expected killed composer run to become cancelled")
 
@@ -255,7 +302,7 @@ local cancelled_text = table.concat(cancelled_lines, "\n")
 assert(cancelled_text:find("%[cancelled%]"), "expected cancelled composer turn to be rendered in the transcript")
 
 assert(vim.wait(400, function()
-  local run = state.get_run(5)
+  local run = state.get_run(6)
   return run and run.status == "done"
 end, 10), "expected final do run to finish")
 
@@ -268,8 +315,8 @@ local text = table.concat(lines, "\n")
 
 assert(filetype == "cinder-runs", "expected runs buffer filetype")
 assert(text:find("%[1%]"), "expected runs buffer to list run 1")
-assert(text:find("%[5%]"), "expected runs buffer to list run 5")
 assert(text:find("%[6%]"), "expected runs buffer to list run 6")
+assert(text:find("%[7%]"), "expected runs buffer to list run 7")
 
 vim.cmd("Cinder doctor")
 
