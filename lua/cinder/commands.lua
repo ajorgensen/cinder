@@ -6,7 +6,7 @@ local ui = require("cinder.ui")
 
 local M = {}
 
-local subcommands = { "do", "send", "runs", "kill", "doctor", "new" }
+local subcommands = { "do", "send", "runs", "kill", "doctor" }
 
 local MAX_INLINE_CONTEXT_LINES = 10
 
@@ -16,47 +16,6 @@ end
 
 local function join_args(args)
   return table.concat(args or {}, " "):gsub("^%s+", ""):gsub("%s+$", "")
-end
-
-local function parse_leading_flags(args)
-  local parsed = {
-    fargs = {},
-    profile = nil,
-  }
-  local index = 1
-
-  while index <= #(args or {}) do
-    local arg = args[index]
-
-    if arg == "--profile" then
-      local profile_name = args[index + 1]
-
-      if not profile_name or profile_name == "" then
-        return nil, "missing value for --profile"
-      end
-
-      parsed.profile = profile_name
-      index = index + 2
-    elseif vim.startswith(arg, "--") then
-      return nil, string.format("unknown option: %s", arg)
-    else
-      break
-    end
-  end
-
-  for remaining_index = index, #(args or {}) do
-    parsed.fargs[#parsed.fargs + 1] = args[remaining_index]
-  end
-
-  return parsed
-end
-
-local function requested_profile(opts, parsed)
-  if parsed and parsed.profile ~= nil then
-    return parsed.profile
-  end
-
-  return opts and opts.profile or nil
 end
 
 local function capture_context_from_buf(bufnr, opts)
@@ -214,58 +173,6 @@ local function callbacks_for(run)
   }
 end
 
-local function create_composer_session(bufnr, opts)
-  local profile = providers.resolve("ask", {
-    profile = opts and opts.profile or nil,
-  })
-
-  state.create_session(bufnr, {
-    profile = profile.profile,
-    provider = profile.provider,
-    model = profile.model,
-    source_bufnr = opts and opts.source_bufnr or nil,
-    pending_context = opts and opts.context or nil,
-  })
-  ui.update_composer_header(bufnr, "idle")
-
-  return bufnr
-end
-
-local function discard_composer_session(session)
-  if not session then
-    return
-  end
-
-  local active_run = state.get_session_active_run(session.session_id)
-
-  if active_run then
-    state.update_run(active_run, {
-      status = "cancelled",
-    })
-  end
-
-  providers.stop_session(session)
-  ui.stop_composer_spinner(session)
-  state.sessions[session.session_id] = nil
-
-  if session.bufnr and vim.api.nvim_buf_is_valid(session.bufnr) then
-    vim.b[session.bufnr].cinder_session_id = nil
-  end
-end
-
-local function restart_composer_session(target_bufnr, opts)
-  if not target_bufnr or not vim.api.nvim_buf_is_valid(target_bufnr) then
-    notify("no composer buffer to start a new session", vim.log.levels.WARN)
-    return nil
-  end
-
-  discard_composer_session(state.get_session(vim.b[target_bufnr].cinder_session_id))
-  create_composer_session(target_bufnr, opts or {})
-  ui.show_composer_buffer(target_bufnr)
-
-  return target_bufnr
-end
-
 local function start_run(run)
   state.update_run(run, {
     status = "running",
@@ -286,14 +193,6 @@ local function ensure_composer_buffer(opts)
   if vim.b[current_buf].cinder_session_id ~= nil then
     local session = state.get_session(vim.b[current_buf].cinder_session_id)
 
-    if session and opts.profile ~= nil then
-      return restart_composer_session(current_buf, {
-        source_bufnr = source_bufnr,
-        context = opts.context or session.pending_context,
-        profile = opts.profile,
-      })
-    end
-
     if session and source_bufnr ~= current_buf then
       state.update_session(session, {
         source_bufnr = source_bufnr,
@@ -311,14 +210,6 @@ local function ensure_composer_buffer(opts)
   local existing = state.find_latest_session()
 
   if existing then
-    if opts.profile ~= nil then
-      return restart_composer_session(existing.bufnr, {
-        source_bufnr = source_bufnr,
-        context = opts.context or existing.pending_context,
-        profile = opts.profile,
-      })
-    end
-
     state.update_session(existing, {
       source_bufnr = source_bufnr,
       pending_context = opts.context or existing.pending_context,
@@ -327,13 +218,16 @@ local function ensure_composer_buffer(opts)
     return existing.bufnr
   end
 
+  local profile = providers.resolve("ask")
   local display_bufnr = ui.open_composer_buffer()
 
-  create_composer_session(display_bufnr, {
+  state.create_session(display_bufnr, {
+    provider = profile.provider,
+    model = profile.model,
     source_bufnr = source_bufnr,
-    context = opts.context,
-    profile = opts.profile,
+    pending_context = opts.context,
   })
+  ui.update_composer_header(display_bufnr, "idle")
 
   return display_bufnr
 end
@@ -386,7 +280,6 @@ local function run_composer_prompt(prompt, source_context, display_bufnr, source
     kind = "composer",
     prompt = prompt,
     provider_prompt = prompt_builder.build_ask_prompt(prompt, source_context),
-    profile = session.profile,
     provider = session.provider,
     model = session.model,
     source_bufnr = source_bufnr or session.source_bufnr,
@@ -434,27 +327,17 @@ local function send_from_composer()
 end
 
 local function do_task(opts)
-  local parsed, err = parse_leading_flags(opts.fargs)
-
-  if err then
-    notify(err, vim.log.levels.WARN)
-    return
-  end
-
-  local prompt = join_args(parsed.fargs)
+  local prompt = join_args(opts.fargs)
 
   if prompt == "" then
     notify("usage: :Cinder do <prompt>", vim.log.levels.WARN)
     return
   end
 
-  local profile = providers.resolve("inline", {
-    profile = requested_profile(opts, parsed),
-  })
+  local profile = providers.resolve("inline")
   local run = state.create_run({
     kind = "do",
     prompt = prompt,
-    profile = profile.profile,
     provider = profile.provider,
     model = profile.model,
     source_bufnr = opts.source_bufnr,
@@ -493,44 +376,6 @@ local function kill(opts)
 
   if err then
     notify(err, vim.log.levels.WARN)
-  end
-end
-
-local function new_session(opts)
-  local parsed, err = parse_leading_flags(opts.fargs)
-
-  if err then
-    notify(err, vim.log.levels.WARN)
-    return
-  end
-
-  local current_buf = vim.api.nvim_get_current_buf()
-  local from_composer = vim.b[current_buf].cinder_session_id ~= nil
-  local session = from_composer and state.get_session(vim.b[current_buf].cinder_session_id) or nil
-
-  if not session then
-    session = state.find_latest_session()
-  end
-
-  local source_bufnr = (not from_composer) and current_buf or nil
-  local context = (not from_composer) and opts and opts.context or nil
-
-  if not session then
-    return open_composer({
-      source_bufnr = source_bufnr,
-      context = context,
-      profile = requested_profile(opts, parsed),
-    })
-  end
-
-  local target_bufnr = restart_composer_session(session.bufnr, {
-    source_bufnr = source_bufnr,
-    context = context,
-    profile = requested_profile(opts, parsed),
-  })
-
-  if target_bufnr then
-    notify("Cinder composer started new session")
   end
 end
 
@@ -585,35 +430,22 @@ function M.execute(subcommand, opts)
     return show_doctor()
   end
 
-  if subcommand == "new" then
-    return new_session(command_opts)
-  end
-
   notify(string.format("unknown subcommand: %s", tostring(subcommand)), vim.log.levels.ERROR)
 end
 
 function M.dispatch(opts)
-  local parsed, err = parse_leading_flags(vim.deepcopy(opts.fargs or {}))
-
-  if err then
-    notify(err, vim.log.levels.WARN)
-    return
-  end
-
-  local fargs = parsed.fargs
+  local fargs = vim.deepcopy(opts.fargs or {})
   local subcommand = table.remove(fargs, 1)
 
   if not subcommand or subcommand == "" then
     return open_composer({
       source_bufnr = vim.api.nvim_get_current_buf(),
       context = capture_context(opts),
-      profile = parsed.profile,
     })
   end
 
   local forwarded = vim.tbl_extend("force", opts, {
     fargs = fargs,
-    profile = parsed.profile,
   })
 
   return M.execute(subcommand, forwarded)

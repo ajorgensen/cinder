@@ -40,7 +40,6 @@ function M.create_session(bufnr, fields)
     numeric_id = numeric_id,
     bufnr = bufnr,
     active_run_id = nil,
-    profile = nil,
     source_bufnr = nil,
     pending_context = nil,
     transcript = {},

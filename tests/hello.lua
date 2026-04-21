@@ -210,53 +210,6 @@ assert(draft_large:find(":1%-15", 1), "expected large-range :Cinder to append he
 assert(not draft_large:find("line 07 content", 1, true), "expected large-range :Cinder to omit selected line body")
 assert(not draft_large:find("line 15 content", 1, true), "expected large-range :Cinder to omit selected line body")
 
-local pre_new_session_id = vim.b[composer_buf].cinder_session_id
-assert(pre_new_session_id == "composer-1", "expected composer session to be composer-1 before starting a new session")
-
-vim.api.nvim_set_current_buf(composer_buf)
-vim.cmd("Cinder new")
-
-local post_new_session_id = vim.b[composer_buf].cinder_session_id
-assert(post_new_session_id and post_new_session_id ~= pre_new_session_id,
-  "expected :Cinder new to create a new session in the composer buffer")
-assert(state.get_session(pre_new_session_id) == nil, "expected previous session to be removed from state")
-
-local new_session = state.get_session(post_new_session_id)
-assert(new_session, "expected new session to exist after :Cinder new")
-assert(#new_session.transcript == 0, "expected new session transcript to be empty after :Cinder new")
-assert(new_session.status == "idle", "expected new session status to be idle")
-
-local draft_after_new = get_composer_draft(composer_buf)
-assert(draft_after_new == "", "expected composer draft to be empty after :Cinder new")
-
-local new_text = table.concat(vim.api.nvim_buf_get_lines(composer_buf, 0, -1, false), "\n")
-assert(not new_text:find("mock pi response turn", 1, true), "expected transcript entries to be cleared after :Cinder new")
-assert(new_text:find(string.format("Session: %s", post_new_session_id), 1, true),
-  "expected composer header to show the new session id after :Cinder new")
-
-set_composer_draft(composer_buf, {
-  "question after new",
-})
-vim.cmd("Cinder send")
-
-local post_new_run_id = nil
-
-assert(vim.wait(400, function()
-  for _, run in ipairs(state.list_runs()) do
-    if run.session_id == post_new_session_id and run.status == "done" then
-      post_new_run_id = run.id
-      return true
-    end
-  end
-  return false
-end, 10), "expected composer send after :Cinder new to finish")
-
-local post_new_run = state.get_run(post_new_run_id)
-local post_new_lines = vim.api.nvim_buf_get_lines(post_new_run.display_bufnr, 0, -1, false)
-local post_new_transcript = table.concat(post_new_lines, "\n")
-assert(post_new_transcript:find("mock pi response turn 1", 1, true),
-  "expected post-new send to receive turn 1 from a fresh pi process")
-
 cinder.setup({
   provider = "pi",
   model = nil,
@@ -293,7 +246,7 @@ vim.cmd("Cinder send")
 vim.cmd("Cinder kill")
 
 assert(vim.wait(200, function()
-  local run = state.get_run(7)
+  local run = state.get_run(6)
   return run and run.status == "cancelled"
 end, 10), "expected killed composer run to become cancelled")
 
@@ -302,7 +255,7 @@ local cancelled_text = table.concat(cancelled_lines, "\n")
 assert(cancelled_text:find("%[cancelled%]"), "expected cancelled composer turn to be rendered in the transcript")
 
 assert(vim.wait(400, function()
-  local run = state.get_run(6)
+  local run = state.get_run(5)
   return run and run.status == "done"
 end, 10), "expected final do run to finish")
 
@@ -315,8 +268,8 @@ local text = table.concat(lines, "\n")
 
 assert(filetype == "cinder-runs", "expected runs buffer filetype")
 assert(text:find("%[1%]"), "expected runs buffer to list run 1")
+assert(text:find("%[5%]"), "expected runs buffer to list run 5")
 assert(text:find("%[6%]"), "expected runs buffer to list run 6")
-assert(text:find("%[7%]"), "expected runs buffer to list run 7")
 
 vim.cmd("Cinder doctor")
 
@@ -334,81 +287,5 @@ assert(doctor_text:find("Profile: fake", 1, true), "expected doctor report to in
 assert(doctor_text:find("Provider: fake", 1, true), "expected doctor report to include fake provider")
 assert(doctor_text:find("Ask: default fallback %-%> pi/%-", 1), "expected doctor report to describe ask selection")
 assert(doctor_text:find("Inline: profile fake %-%> fake/fake%-do", 1), "expected doctor report to describe inline selection")
-
-vim.api.nvim_set_current_buf(original_buf)
-vim.cmd("Cinder do --profile default review this file")
-
-local default_override_run = nil
-
-assert(vim.wait(400, function()
-  default_override_run = state.list_runs()[#state.list_runs()]
-  return default_override_run and default_override_run.status == "done"
-end, 10), "expected do run with --profile default to finish")
-
-assert(default_override_run.provider == "pi", "expected --profile default to route :Cinder do through the configured default provider")
-assert(default_override_run.model == nil, "expected --profile default to keep the configured default model unpinned")
-
-vim.api.nvim_set_current_buf(composer_buf)
-vim.cmd("Cinder new --profile fake")
-
-local fake_profile_session_id = vim.b[composer_buf].cinder_session_id
-local fake_profile_session = state.get_session(fake_profile_session_id)
-
-assert(fake_profile_session, "expected :Cinder new --profile fake to create a composer session")
-assert(fake_profile_session.profile == "fake", "expected composer session to remember the selected fake profile")
-assert(fake_profile_session.provider == "fake", "expected fake profile session to use the fake provider")
-assert(fake_profile_session.model == "fake-do", "expected fake profile session to pin the fake model")
-
-set_composer_draft(composer_buf, {
-  "use the fake profile",
-})
-vim.cmd("Cinder send")
-
-local fake_profile_run = nil
-
-assert(vim.wait(400, function()
-  fake_profile_run = state.list_runs()[#state.list_runs()]
-  return fake_profile_run and fake_profile_run.status == "done"
-end, 10), "expected composer send with fake profile to finish")
-
-local fake_profile_lines = vim.api.nvim_buf_get_lines(fake_profile_run.display_bufnr, 0, -1, false)
-local fake_profile_text = table.concat(fake_profile_lines, "\n")
-
-assert(fake_profile_run.provider == "fake", "expected composer run to inherit the fake profile provider")
-assert(fake_profile_run.model == "fake-do", "expected composer run to inherit the fake profile model")
-assert(fake_profile_text:find("Backend: fake/fake%-do", 1), "expected composer header to show the fake profile backend")
-assert(fake_profile_text:find("Fake response from fake/fake%-do for: use the fake profile", 1),
-  "expected composer send to use the fake profile backend")
-
-vim.cmd("Cinder new --profile default")
-
-local default_profile_session_id = vim.b[composer_buf].cinder_session_id
-local default_profile_session = state.get_session(default_profile_session_id)
-
-assert(default_profile_session, "expected :Cinder new --profile default to create a composer session")
-assert(default_profile_session.profile == nil, "expected default profile selection to clear the composer profile override")
-assert(default_profile_session.provider == "pi", "expected default profile selection to restore the configured provider")
-assert(default_profile_session.model == nil, "expected default profile selection to restore the configured default model")
-
-set_composer_draft(composer_buf, {
-  "back to the default profile",
-})
-vim.cmd("Cinder send")
-
-local default_profile_run = nil
-
-assert(vim.wait(400, function()
-  default_profile_run = state.list_runs()[#state.list_runs()]
-  return default_profile_run and default_profile_run.status == "done"
-end, 10), "expected composer send after --profile default to finish")
-
-local default_profile_lines = vim.api.nvim_buf_get_lines(default_profile_run.display_bufnr, 0, -1, false)
-local default_profile_text = table.concat(default_profile_lines, "\n")
-
-assert(default_profile_run.provider == "pi", "expected composer run to use the configured default provider after --profile default")
-assert(default_profile_run.model == nil, "expected composer run to use the configured default model after --profile default")
-assert(default_profile_text:find("Backend: pi/%-", 1), "expected composer header to show the restored default backend")
-assert(default_profile_text:find("mock pi response turn 1", 1, true),
-  "expected composer send after --profile default to start a fresh default pi session")
 
 vim.cmd("qa!")

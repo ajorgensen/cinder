@@ -59,14 +59,12 @@ local function render_composer(bufnr)
   local session = session_id ~= "unassigned" and state.get_session(session_id) or nil
   local provider = session and session.provider or "unknown"
   local model = session and session.model or "-"
-  local profile = session and session.profile or "default"
   local transcript = session and session.transcript or {}
   local draft_lines = session and session.draft_lines or { "" }
   local pending_response = session and session.pending_response or nil
   local lines = {
     "Cinder",
     string.format("Session: %s", session_id),
-    string.format("Profile: %s", profile),
     string.format("Backend: %s/%s", provider, model),
     status_line(session),
     "",
