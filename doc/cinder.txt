@@ -5,18 +5,25 @@ tasks.
 
 Current provider split:
         Ask uses a pi RPC adapter.
-        Do uses a fake provider scaffold.
+        Do defaults to a fake provider scaffold, but can be overridden with
+        configured profiles.
 
 COMMANDS                                                *cinder-commands*
 
 :Cinder
         Open or reuse the composer buffer.
 
+:Cinder --profile {name}
+        Open or reset the composer buffer onto a named profile.
+
 :Cinder send
         Submit the draft from the composer buffer.
 
-:Cinder do {prompt}
+:Cinder do [--profile {name|default}] {prompt}
         Start a background Do run for the current editing context.
+
+:Cinder new [--profile {name|default}]
+        Start a fresh composer session, optionally on a named profile.
 
 :Cinder runs
         Open a scratch buffer listing in-memory runs.
@@ -36,6 +43,7 @@ CONFIGURATION                                        *cinder-configuration*
 
     profiles = {
       fake = { provider = "fake", model = "fake-do" },
+      fast = { provider = "pi", model = "gpt-5-mini" },
     },
 
     ask = {
@@ -58,3 +66,6 @@ CONFIGURATION                                        *cinder-configuration*
     },
   })
 <
+
+Use `default` as the profile name to clear an override and fall back to the
+top-level `provider` and `model`.

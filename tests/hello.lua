@@ -335,4 +335,80 @@ assert(doctor_text:find("Provider: fake", 1, true), "expected doctor report to i
 assert(doctor_text:find("Ask: default fallback %-%> pi/%-", 1), "expected doctor report to describe ask selection")
 assert(doctor_text:find("Inline: profile fake %-%> fake/fake%-do", 1), "expected doctor report to describe inline selection")
 
+vim.api.nvim_set_current_buf(original_buf)
+vim.cmd("Cinder do --profile default review this file")
+
+local default_override_run = nil
+
+assert(vim.wait(400, function()
+  default_override_run = state.list_runs()[#state.list_runs()]
+  return default_override_run and default_override_run.status == "done"
+end, 10), "expected do run with --profile default to finish")
+
+assert(default_override_run.provider == "pi", "expected --profile default to route :Cinder do through the configured default provider")
+assert(default_override_run.model == nil, "expected --profile default to keep the configured default model unpinned")
+
+vim.api.nvim_set_current_buf(composer_buf)
+vim.cmd("Cinder new --profile fake")
+
+local fake_profile_session_id = vim.b[composer_buf].cinder_session_id
+local fake_profile_session = state.get_session(fake_profile_session_id)
+
+assert(fake_profile_session, "expected :Cinder new --profile fake to create a composer session")
+assert(fake_profile_session.profile == "fake", "expected composer session to remember the selected fake profile")
+assert(fake_profile_session.provider == "fake", "expected fake profile session to use the fake provider")
+assert(fake_profile_session.model == "fake-do", "expected fake profile session to pin the fake model")
+
+set_composer_draft(composer_buf, {
+  "use the fake profile",
+})
+vim.cmd("Cinder send")
+
+local fake_profile_run = nil
+
+assert(vim.wait(400, function()
+  fake_profile_run = state.list_runs()[#state.list_runs()]
+  return fake_profile_run and fake_profile_run.status == "done"
+end, 10), "expected composer send with fake profile to finish")
+
+local fake_profile_lines = vim.api.nvim_buf_get_lines(fake_profile_run.display_bufnr, 0, -1, false)
+local fake_profile_text = table.concat(fake_profile_lines, "\n")
+
+assert(fake_profile_run.provider == "fake", "expected composer run to inherit the fake profile provider")
+assert(fake_profile_run.model == "fake-do", "expected composer run to inherit the fake profile model")
+assert(fake_profile_text:find("Backend: fake/fake%-do", 1), "expected composer header to show the fake profile backend")
+assert(fake_profile_text:find("Fake response from fake/fake%-do for: use the fake profile", 1),
+  "expected composer send to use the fake profile backend")
+
+vim.cmd("Cinder new --profile default")
+
+local default_profile_session_id = vim.b[composer_buf].cinder_session_id
+local default_profile_session = state.get_session(default_profile_session_id)
+
+assert(default_profile_session, "expected :Cinder new --profile default to create a composer session")
+assert(default_profile_session.profile == nil, "expected default profile selection to clear the composer profile override")
+assert(default_profile_session.provider == "pi", "expected default profile selection to restore the configured provider")
+assert(default_profile_session.model == nil, "expected default profile selection to restore the configured default model")
+
+set_composer_draft(composer_buf, {
+  "back to the default profile",
+})
+vim.cmd("Cinder send")
+
+local default_profile_run = nil
+
+assert(vim.wait(400, function()
+  default_profile_run = state.list_runs()[#state.list_runs()]
+  return default_profile_run and default_profile_run.status == "done"
+end, 10), "expected composer send after --profile default to finish")
+
+local default_profile_lines = vim.api.nvim_buf_get_lines(default_profile_run.display_bufnr, 0, -1, false)
+local default_profile_text = table.concat(default_profile_lines, "\n")
+
+assert(default_profile_run.provider == "pi", "expected composer run to use the configured default provider after --profile default")
+assert(default_profile_run.model == nil, "expected composer run to use the configured default model after --profile default")
+assert(default_profile_text:find("Backend: pi/%-", 1), "expected composer header to show the restored default backend")
+assert(default_profile_text:find("mock pi response turn 1", 1, true),
+  "expected composer send after --profile default to start a fresh default pi session")
+
 vim.cmd("qa!")

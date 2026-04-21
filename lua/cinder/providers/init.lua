@@ -1,25 +1,42 @@
 local M = {}
 
-local function resolve_profile(config, profile_name)
-  if not profile_name or profile_name == "" then
+local function normalize_profile_name(profile_name)
+  if not profile_name or profile_name == "" or profile_name == "default" then
     return nil
+  end
+
+  return profile_name
+end
+
+local function resolve_profile(config, profile_name)
+  profile_name = normalize_profile_name(profile_name)
+
+  if not profile_name then
+    return nil, nil
   end
 
   local profile = config.profiles[profile_name]
 
   assert(profile, string.format("unknown cinder profile: %s", tostring(profile_name)))
 
-  return profile
+  return profile, profile_name
 end
 
-function M.resolve(mode_name)
+function M.resolve(mode_name, opts)
   local config = require("cinder").get_config()
   local mode = config[mode_name] or {}
-  local profile = resolve_profile(config, mode.profile) or {}
+  local requested_profile = mode.profile
+
+  if opts and opts.profile ~= nil then
+    requested_profile = opts.profile
+  end
+
+  local profile, profile_name = resolve_profile(config, requested_profile)
+  local resolved_profile = profile or {}
   local resolved = {
-    provider = profile.provider or config.provider,
-    model = profile.model,
-    profile = mode.profile,
+    provider = resolved_profile.provider or config.provider,
+    model = resolved_profile.model,
+    profile = profile_name,
   }
 
   if resolved.model == nil then

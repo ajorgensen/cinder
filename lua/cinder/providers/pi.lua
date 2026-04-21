@@ -74,6 +74,10 @@ local function finalize_run(process, run, callbacks, result)
   process.current_callbacks = nil
   process.last_assistant_message = nil
   callbacks.on_complete(run, result)
+
+  if not process.reusable then
+    vim.fn.jobstop(process.job_id)
+  end
 end
 
 local function fail_run(process, run, callbacks, message)
@@ -82,6 +86,10 @@ local function fail_run(process, run, callbacks, message)
   process.current_callbacks = nil
   process.last_assistant_message = nil
   callbacks.on_error(run, message)
+
+  if not process.reusable then
+    vim.fn.jobstop(process.job_id)
+  end
 end
 
 local function cancel_run(process, run, callbacks)
@@ -90,6 +98,10 @@ local function cancel_run(process, run, callbacks)
   process.current_callbacks = nil
   process.last_assistant_message = nil
   callbacks.on_cancelled(run)
+
+  if not process.reusable then
+    vim.fn.jobstop(process.job_id)
+  end
 end
 
 local function handle_event(process, event)
@@ -268,8 +280,23 @@ local function build_env(opts)
   return env
 end
 
+local function session_key(run)
+  return run.session_id or string.format("run-%s", run.id)
+end
+
 local function create_process(run, opts)
-  local session = require("cinder.state").get_session(run.session_id)
+  local session = nil
+
+  if run.session_id then
+    session = require("cinder.state").get_session(run.session_id)
+  end
+
+  if not session then
+    session = {
+      session_id = session_key(run),
+    }
+  end
+
   local command = build_command(run, opts)
   local cwd = opts.cwd or run.context.cwd or vim.fn.getcwd()
   local env = build_env(opts)
@@ -280,6 +307,7 @@ local function create_process(run, opts)
 
   local process = {
     session = session,
+    reusable = run.session_id ~= nil,
     command = command,
     cwd = cwd,
     env = env,
@@ -326,6 +354,10 @@ local function create_process(run, opts)
 end
 
 local function ensure_process(run, opts)
+  if not run.session_id then
+    return create_process(run, opts)
+  end
+
   local process = session_processes[run.session_id]
 
   if process and vim.fn.jobwait({ process.job_id }, 0)[1] == -1 then

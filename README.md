@@ -10,7 +10,8 @@ The current state of the repo is a proof-of-concept focused on validating:
 
 Current provider state:
 - `Ask` goes through a real `pi --mode rpc` adapter
-- `Do` still uses the fake provider
+- `Do` still defaults to the fake provider
+- `Do` and `Ask` can be overridden per command with configured profiles
 - tests use a mock Pi RPC process for deterministic headless coverage
 
 ## Installation
@@ -32,8 +33,11 @@ Command surface:
 
 ```vim
 :Cinder
+:Cinder --profile fast
 :Cinder send
+:Cinder new --profile default
 :Cinder do refactor this file to use table tests
+:Cinder do --profile default review this file
 :Cinder runs
 :Cinder kill 3
 :Cinder doctor
@@ -43,10 +47,14 @@ Command surface:
 ## Current Behavior
 
 - Bare `:Cinder` opens a scratch composer buffer.
+- Bare `:Cinder --profile <name>` opens or resets the composer onto that profile.
 - Running bare `:Cinder` again reuses the most recent composer buffer.
 - The composer buffer contains a draft section; type there and submit with `:Cinder send`.
 - `:Cinder send` reuses the current Pi session and appends the turn to the transcript.
+- `:Cinder new --profile <name>` starts a fresh composer session on that profile.
 - `Do` runs in the background and shows inline progress via virtual text.
+- `:Cinder do --profile <name>` routes a single Do request through that profile.
+- `default` is a reserved profile name that clears the override and falls back to `provider` and `model`.
 - `runs` opens a scratch buffer with the in-memory run registry.
 - `kill` cancels an active run by id.
 - `kill` without an id in the composer aborts the active Pi run for that session.
@@ -62,6 +70,7 @@ require("cinder").setup({
 
   profiles = {
     fake = { provider = "fake", model = "fake-do" },
+    fast = { provider = "pi", model = "gpt-5-mini" },
   },
 
   ask = {
@@ -84,6 +93,8 @@ require("cinder").setup({
   },
 })
 ```
+
+Use `--profile <name>` on `:Cinder`, `:Cinder new`, or `:Cinder do` to override the configured mode for one fresh composer session or one inline run. Use `--profile default` to fall back to the top-level `provider` and `model`.
 
 ## Development
 
